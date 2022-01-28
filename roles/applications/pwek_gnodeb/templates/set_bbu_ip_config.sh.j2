@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+XML="{{ flexran_prebuild_e2e_path }}/rsys_cu/config/oam_3gpp_cu_sa_1du_1cell_mate30.xml"
+USER={{ USER }}
+REMOTE={{ REMOTE }}
+
+# $1 element tag, $2 element value, $3 the n time occurrent, $4 file name
+function sub_xml_val ()
+{
+  sed -i -e ':a;N;$!ba; s/[^>]*\(<\/'"$1"'>\)/'"$2"'\1/'"$3"'' $4
+}
+
+# cu
+label="app=flexran-5gnr-bbu-l2cu"
+cu_ip=`kubectl -n {{ pwek_namespace_name }} get pods -l $label -o=jsonpath="{.items[0].status.podIP}"`
+
+# amf
+label="app.kubernetes.io/name=amf"
+amf_ip=`kubectl -n {{ pwek_namespace_name }} get pods -l $label -o=jsonpath="{.items[0].status.podIP}"`
+
+echo "cu IP: $cu_ip, amf IP: $amf_ip"
+
+cat << EOF > /tmp/cu_config_ip.sh
+function sub_xml_val ()
+{
+  sed -i -e ':a;N;\$!ba; s/[^>]*\(<\/'"\$1"'>\)/'"\$2"'\1/'"\$3"'' \$4
+}
+
+XML=$XML
+# XML=/tmp/oam_3gpp_cu_sa_1du_1cell_mate30.xml
+
+# Second time currence, set CU IP
+XEL=localIpAddress VAL=$cu_ip CUR=2
+sub_xml_val \$XEL \$VAL \$CUR \$XML
+
+# Third time currence, set amf IP
+XEL=remoteAddress VAL=$amf_ip CUR=3
+sub_xml_val \$XEL \$VAL \$CUR \$XML
+
+cat \$XML |egrep '$cu_ip|$amf_ip' >/dev/null
+if [ \$? -ne 0 ]
+ then
+   echo "Failed to setup configuration file: \$XML"
+   exit 11
+fi
+EOF
+
+echo """apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox
+  labels:
+    run: configxml
+spec:
+  containers:
+  - name: busybox
+    image: busybox:latest
+    imagePullPolicy: IfNotPresent
+    command:
+    - /bin/sh
+    args:
+    - -c
+    - sleep 1h
+    volumeMounts:
+    - name: xml
+      mountPath: /home
+    securityContext:
+      privileged: true
+  volumes:
+  - name: xml
+    hostPath:
+      path: /home
+      type: Directory""" | kubectl apply -f -
+
+# wait busybox ready
+i=0
+while true
+do
+  sleep 1
+  i=`expr $i + 1`
+  sts=$(kubectl get pod busybox -o custom-columns=STATUS:.status.phase --no-headers)
+  if [ "$sts" == "Running" ]
+  then
+    break
+  fi
+  # timeout
+  if [ $i -gt 30 ]
+  then
+    exit 2
+  fi
+done
+
+kubectl cp /tmp/cu_config_ip.sh default/busybox:/tmp/cu_config_ip.sh
+kubectl exec busybox -- sh /tmp/cu_config_ip.sh

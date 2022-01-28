@@ -1,0 +1,57 @@
+#!/usr/bin/expect
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+set cu_ready "PDCP RX"
+
+#detach command
+set dt_cmd "\01d" 
+set green "\033\[0;32m"
+set red "\033\[0;31m"
+set reset "\033\[0;0m"
+
+set timeout 300
+set ::env(TERM) vt100
+
+spawn screen -S gnb_cu kubectl exec -it -n {{ cera_namespace_name }} {{ app_name }} -- bash
+set cu_id $spawn_id
+
+expect  {
+    -i $cu_id "]#" {}
+    timeout {
+        puts "* ${red}Get inside pod timeout${reset}"
+        send -i $cu_id "$dt_cmd"
+        exit 1
+    }
+}
+
+send -i $cu_id "cd {{ cu_du_path }}/CU/bin; \
+./oam_cu.sh\n"
+
+sleep 1
+send -i $cu_id "./gnb_cu\n"
+
+
+expect {
+    -i $cu_id "$cu_ready" { puts "* ${green}CU READY${reset}"}
+    timeout {
+        puts "* ${red}CU timeout${reset}" 
+        send -i $cu_id "$dt_cmd"
+        exit 1
+    }
+}
+send -i $cu_id "$dt_cmd"
+
+sleep 1
+
+interact

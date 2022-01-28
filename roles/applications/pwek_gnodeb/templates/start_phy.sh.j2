@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+function expect_done(){
+#  #!/usr/bin/expect -f
+# /usr/bin/expect -d <<-EOF
+/usr/bin/expect <<-EOF
+set timeout $2
+spawn tmux attach -t $1
+set cu_id \$spawn_id
+sleep 2
+send -i \$cu_id "$3\r"
+sleep 2
+expect {
+    -i \$cu_id "$4" { puts "* run ${3}: ${green}READY${reset}"}
+    timeout {
+        puts "* run ${3}: ${red}timeout${reset}"
+        # send -i \$cu_id "$dt_cmd"
+        exit 1
+    }
+    puts "* Tmux ${1} ${red}Exit.${reset}"
+}
+EOF
+}
+
+SESSION=autobbu
+tmux new-session -s ${SESSION} -n PHY -d
+echo "# Please run the follow commands to capture tmux log manually:"
+echo "tmux a"
+echo "tmux pipep -o -t ${SESSION}:0.0 \"cat > /root/instant_phy.log\""
+echo date
+echo "# please detach tmux session"
+echo "# stop capture log, run 'tmux pipep'"
+if [ "$1" = "-d" ]; then read; fi
+tmux send-keys -t ${SESSION} "echo 'cd {{ flexran_prebuild_e2e_path }}/flexran_l1/'" C-m
+tmux send-keys -t ${SESSION} "echo run_l1.sh" C-m
+
+TIMEOUT=90   # 72s
+EXP="PHY>welcome to application console"
+CMD="kubectl -n {{ pwek_namespace_name }} exec -it flexran-5gnr-bbu-l1du -- bash -c 'cd {{ flexran_prebuild_e2e_path }}/flexran_l1/; ./run_l1.sh; bash'"
+
+expect_done ${SESSION} $TIMEOUT "$CMD" "$EXP"

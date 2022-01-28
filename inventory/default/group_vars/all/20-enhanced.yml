@@ -1,0 +1,111 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+# This file contains variables intended to be configured by user.
+# It allows feature enabling and configuration.
+# Per-host variables should be places in `host_vars` directory.
+# Features should not be configured by changing roles' defaults (i.e. role/defaults/main.yml)
+
+##################################################
+##### User settings
+
+### GitHub token
+# It must be provided when using private repositories.
+# Not required when using github.com/open-ness repositories.
+# How to create a GitHub token: https://help.github.com/en/github/authenticating-to-github/creating-a-personal-access-token-for-the-command-line
+git_repo_token: ""
+
+##################################################
+rook_ceph:
+  enabled: False
+  mon_count: 1
+  host_name: "{{ hostvars[groups['controller_group'][0]]['ansible_nodename'] }}"
+  osds_per_device: "1"
+  replica_pool_size: 1
+
+##### Network Edge
+
+## ido-epcforedge repository path and branch
+_epcforedge_git_repo:
+  dir: https://{{ git_repo_token }}@github.com/smart-edge-open/ido-epcforedge.git
+  download_dir: "{{ project_dir }}/ido-epcforedge"
+  branch: master
+
+## edgeapps repository path and branch
+_edgeapps_git_repo:
+  dir: https://{{ git_repo_token }}@github.com/smart-edge-open/edgeapps.git
+  dest: /opt/edgeapps
+  branch: smart-edge-open-22.01
+
+## Network Policies for 5GC traffic
+network_policies_enable: false
+
+## Network Edge NGC role
+ne_ngc_enable: false
+
+## CERA deployment variables
+
+cera_namespace_name: cera-rdc
+cera_namespace_enable: false
+cera_charts_path_enable: false
+
+# Enable setting interfaces for specific components
+set_core_network_interfaces: false
+set_gnodeb_interfaces: false
+
+# Enable components deployment
+psa_upf_enable: false
+amf_smf_enable: false
+remote_dn_enable: false
+i_upf_enable: false
+gnodeb_enable: false
+edgeapps_repo_enable: false
+edgeapps_deployment_enable: false
+
+# Paths for storing Cera related resources
+remote_cera_path: "/opt/cera"
+cera_charts_path: "{{ remote_cera_path }}/charts/"
+cera_images_path: "{{ remote_cera_path }}/images/"
+cera_scripts_path: "{{ remote_cera_path }}/scripts/"
+
+# OpenNESS Harbor registry variables
+docker_registry_port: 30003
+openness_harbor_registry_ip: "{{ ansible_default_ipv4.address | default(ansible_all_ipv4_addresses[0]) }}"
+openness_harbor_registry_address: "{{ openness_harbor_registry_ip }}:{{ docker_registry_port }}/intel"
+
+# OpenVINO general variables
+openvino_install_path: "/opt/openvino"
+openvino_yamls_location: "{{ openvino_install_path }}/yamls"
+k8s_openvino_namespace: "openvino"
+openvino_pod_version: 1.0
+
+# Kube-virt settings
+kubevirt_enable: true
+
+# Deploy OpenNESS services
+openness_enable: true
+## Edge DNS
+dns_enable: true
+
+# OpenNESS pods retry variable
+openness_pods_timeout_min: 15
+
+## Network Service Mesh
+ne_nsm_enable: true
+
+# Disable DEK security features
+sgx_enabled: false
+platform_attestation_node: false
+platform_attestation_controller: false
+## Disable install HWE Kernel until it's validated with pwek
+install_hwe_kernel_enable: false

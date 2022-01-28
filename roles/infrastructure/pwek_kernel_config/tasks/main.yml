@@ -1,0 +1,99 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+# tasks file for set_kernel_parameter
+
+- name: set the core parameter value to unlimited in node machine
+  pam_limits:
+    domain: '*'
+    limit_item: core
+    limit_type: '-'
+    value: unlimited
+  become: yes
+
+- name: set core_users_pid
+  shell: echo 1 > /proc/sys/kernel/core_uses_pid
+  become: yes
+  changed_when: false
+
+- name: set some kernel parameter
+  sysctl:
+    name: "{{ item }}"
+    value: "16777216"
+  with_items:
+    - "net.core.rmem_max"
+    - "net.core.rmem_default"
+    - "net.core.wmem_max"
+    - "net.core.wmem_default"
+  become: yes
+
+- name: set sched_rt_runtime_us
+  sysctl:
+    name: kernel.sched_rt_runtime_us
+    value: "-1"
+  become: yes
+
+- name: set shmmax and shmall
+  sysctl:
+    name: "{{ item }}"
+    value: "2147483648"
+  with_items:
+    - "kernel.shmmax"
+    - "kernel.shmall"
+  become: yes
+
+- name: disable irqbalance
+  service:
+    name: irqbalance
+    enabled: no
+    runlevel: 12345
+  become: yes
+  changed_when: false
+
+- name: set nmi_watchdog to 0
+  shell: echo 0 > /proc/sys/kernel/nmi_watchdog # noqa command-instead-of-shell
+  become: yes
+  changed_when: false
+
+- name: set rcu_cpu_stall_suppress to 1
+  shell: echo 1 > /sys/module/rcupdate/parameters/rcu_cpu_stall_suppress # noqa command-instead-of-shell
+  become: yes
+  changed_when: false
+
+- name: stop firewalld #THIS HAS TO BE REMOVED
+  systemd:
+    name: firewalld
+    state: stopped
+  become: yes
+
+- name: install required packages for cpu frequency
+  yum:
+    name: msr-tools
+    state: present
+  become: yes
+
+- name: set cpu frequency
+  command: cpupower frequency-set -g performance
+  become: yes
+  failed_when: false
+  changed_when: false
+
+- name: set cpu idle-set
+  command: cpupower idle-set -d 2
+  become: yes
+  changed_when: false
+
+- name: Stop Synchronizing Time with NTP
+  command: timedatectl set-ntp false
+  become: true
+  changed_when: false

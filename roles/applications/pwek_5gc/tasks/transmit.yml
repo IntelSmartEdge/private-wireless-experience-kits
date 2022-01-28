@@ -1,0 +1,32 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+- name: Copy Helm charts from Offline Packages to Controller
+  copy:
+    src: "{{ _offline_package_charts }}/"
+    dest: "{{ pwek_charts_path }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: 0775
+    remote_src: false
+  become: yes
+- name: Copy pod images files from Offline Package to Controller
+  copy:
+    src: "{{ _offline_package_images }}/"
+    dest: "{{ pwek_images_path }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: 0775
+    remote_src: false
+  become: yes

@@ -1,0 +1,264 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+echo "===> deploy du and cu"
+DPDK_P={{ pwek_dpdk_path }}
+L1DU=flexran-5gnr-bbu-l1du
+L2CU=flexran-5gnr-bbu-l2cu
+DU_MEM_SIZE={{ du_mem_size }}
+DU_HG1G_SIZE={{ du_hugepage_size }}
+CU_MEM_SIZE={{ cu_mem_size }}
+CU_HG1G_SIZE={{ cu_hugepage_size }}
+FRONT_HAUL_NET0={{ fronthaul_du_side_networkName0 }}
+FRONT_HAUL_NET1={{ fronthaul_du_side_networkName1 }}
+MIDHAUL_DU_NET={{ midhaul_du_side_networkName }}
+MIDHAUL_CU_NET={{ midhaul_cu_side_networkName }}
+BACKHAUL_CU_NET={{ backhaul_cu_side_networkName }}
+
+FEC_RS=intel_fec_acc100
+
+# FRONT_HAUL_NET=sriov-net-40g
+# MIDHAUL_DU_NET=sriov-net-1g-du
+# MIDHAUL_CU_NET=sriov-net-1g-cu
+# BACKHAUL_CU_NET=sriov-net-10g
+
+for i in /sys/devices/system/node/node*; do echo $i; cat $i/meminfo |grep -e Total -e Free; done
+if [ "$1" = "-r" ]; then
+  echo "Only remove BBU, exit"
+  exit 1
+fi
+cat <<EOF | kubectl  apply -f -
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: $L1DU
+  name: $L1DU
+  namespace: {{ pwek_namespace_name }}
+  annotations:
+    #"cni.projectcalico.org/ipAddrs": "[\"20.20.64.157\"]"
+    k8s.v1.cni.cncf.io/networks: $FRONT_HAUL_NET0, $FRONT_HAUL_NET1, $MIDHAUL_DU_NET, $MIDHAUL_DU_NET, $MIDHAUL_DU_NET, $MIDHAUL_DU_NET
+spec:
+  nodeSelector:
+    testnode: edge-node
+  containers:
+  - securityContext:
+      privileged: true
+      capabilities:
+        add:
+          - SYS_ADMIN
+          - IPC_LOCK
+          - SYS_NICE
+          - NET_ADMIN
+    # command:
+    #   - sleep
+    #   - infinity
+    tty: true
+    stdin: true
+    image: {{ harbor_url }}/5gnr-bbu:v1
+    imagePullPolicy: IfNotPresent
+    name: bbu-l1du-ctr
+    resources:
+      requests:
+        memory: "${DU_MEM_SIZE}Gi"
+        intel.com/${FEC_RS:-intel_fec_acc100}: '1'
+        intel.com/intel_sriov_DU: '4'
+        intel.com/{{ fronthaul.du_side.resourceName[0] }}: '1'
+        intel.com/{{ fronthaul.du_side.resourceName[1] }}: '1'
+        hugepages-1Gi: ${DU_HG1G_SIZE}Gi
+      limits:
+        memory: "${DU_MEM_SIZE}Gi"
+        intel.com/${FEC_RS:-intel_fec_acc100}: '1'
+        intel.com/intel_sriov_DU: '4'
+        intel.com/{{ fronthaul.du_side.resourceName[0] }}: '1'
+        intel.com/{{ fronthaul.du_side.resourceName[1] }}: '1'
+        hugepages-1Gi: ${DU_HG1G_SIZE}Gi
+    volumeMounts:
+    - name: hugepage
+      mountPath: /hugepages
+    - name: dpdk-path
+      mountPath: {{ pwek_dpdk_path }}
+      readOnly: false
+    - name: flexran-path
+      mountPath: {{ flexran_prebuild_path }}
+      readOnly: false
+    - name: varrun
+      mountPath: /var/run/dpdk
+      readOnly: false
+    - name: sys
+      mountPath: /sys/
+      readOnly: false
+    - name: devfs
+      mountPath: /dev
+      readOnly: false
+    - name: icc-path
+      mountPath: /opt/intel/system_studio_2019
+      readOnly: true
+  volumes:
+  - name: sys
+    hostPath:
+      path: "/sys"
+  - name: devfs
+    hostPath:
+      path: "/dev"
+  - name: dpdk-path
+    hostPath:
+      path: "$DPDK_P"
+  - name: flexran-path
+    hostPath:
+      path: "{{ flexran_prebuild_path }}"
+  - name: hugepage
+    emptyDir:
+      medium: HugePages
+  - name: varrun
+    emptyDir: {}
+  - name: icc-path
+    hostPath:
+      path: "/opt/intel/system_studio_2019"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: $L2CU
+  name: $L2CU
+  namespace: {{ pwek_namespace_name }}
+  annotations:
+    #"cni.projectcalico.org/ipAddrs": "[\"20.20.64.158\"]"
+    k8s.v1.cni.cncf.io/networks: $MIDHAUL_CU_NET, $MIDHAUL_CU_NET, $MIDHAUL_CU_NET, $MIDHAUL_CU_NET, $BACKHAUL_CU_NET
+spec:
+  nodeSelector:
+    testnode: edge-node
+  containers:
+  - securityContext:
+      privileged: true
+      capabilities:
+        add:
+          - SYS_ADMIN
+          - IPC_LOCK
+          - SYS_NICE
+    # command:
+    #   - sleep
+    #   - infinity
+    tty: true
+    stdin: true
+    image: {{ harbor_url }}/5gnr-bbu:v1
+    imagePullPolicy: IfNotPresent
+    name: bbu-l2cu-ctr
+    resources:
+      requests:
+        hugepages-1Gi: ${CU_HG1G_SIZE}Gi
+        qat.intel.com/generic: '16'
+        intel.com/intel_sriov_CU: '4'
+        intel.com/intel_sriov_10G_NGU: '1'
+        memory: "${CU_MEM_SIZE}Gi"
+      limits:
+        hugepages-1Gi: ${CU_HG1G_SIZE}Gi
+        qat.intel.com/generic: '16'
+        intel.com/intel_sriov_CU: '4'
+        intel.com/intel_sriov_10G_NGU: '1'
+        memory: "${CU_MEM_SIZE}Gi"
+    volumeMounts:
+    - name: hugepage
+      mountPath: /hugepages
+    - name: dpdk-path
+      mountPath: {{ pwek_dpdk_path }}
+    - name: flexran-path
+      mountPath: {{ flexran_prebuild_path }}
+      readOnly: false
+    - name: varrun
+      mountPath: /var/run/dpdk
+      readOnly: false
+    - name: sys
+      mountPath: /sys/
+      readOnly: false
+    - name: icc-path
+      mountPath: /opt/intel/system_studio_2019
+      readOnly: true
+  volumes:
+  - name: sys
+    hostPath:
+      path: "/sys"
+  - name: dpdk-path
+    hostPath:
+      path: "$DPDK_P"
+  - name: flexran-path
+    hostPath:
+      path: "{{ flexran_prebuild_path }}"
+  - name: hugepage
+    emptyDir:
+      medium: HugePages
+  - name: varrun
+    emptyDir: {}
+  - name: icc-path
+    hostPath:
+      path: "/opt/intel/system_studio_2019"
+EOF
+
+# L1DU=flexran-5gnr-bbu-l1du
+# L2CU=flexran-5gnr-bbu-l2cu
+# cu
+label="app=$L2CU"
+cu_ready=`kubectl -n {{ pwek_namespace_name }} get --no-headers=true pods -l $label -o custom-columns=:status.containerStatuses[0].ready |head -n 1`
+
+# du
+label="app=$L1DU"
+cu_ready=`kubectl -n {{ pwek_namespace_name }} get --no-headers=true pods -l $label -o custom-columns=:status.containerStatuses[0].ready |head -n 1`
+
+function pod_ready(){
+  label=$1
+  ready=`kubectl -n {{ pwek_namespace_name }} get --no-headers=true pods -l $label -o custom-columns=:status.containerStatuses[0].ready |head -n 1`
+  if [ "$ready" = true ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Set interval (duration) in seconds.
+secs=120
+endTime=$(( $(date +%s) + secs )) # Calculate end time.
+
+while [ $(date +%s) -lt $endTime ]; do  # Loop until interval has elapsed.
+    sleep 1
+    echo "Waiting for CU/DU ready..."
+    label="app=$L2CU"
+    pod_ready $label
+    cu_ready=$?
+    label="app=$L1DU"
+    # pod_ready app=dddd
+    pod_ready $label
+    du_ready=$?
+    if [[ $cu_ready -eq 0  && $du_ready -eq 0 ]]; then
+      echo "CU/DU are ready."
+      /usr/bin/bash -x {{ pwek_gnodeb_scripts_path }}/set_bbu_ip_config.sh
+        if [ $? -ne 0 ]
+          then
+            echo "Failed to setup configuration file: $XML"
+            kubectl delete pod busybox
+            exit 11
+          fi
+      kubectl delete pod busybox
+      exit 0
+    fi
+done
+
+echo "BBU is not ready"
+echo "Pleas run the follow command to check the BBU status:"
+echo "  kubectl -n {{ pwek_namespace_name }} get pods"
+echo "And run: "
+echo " ./set_bbu_ip_config.sh"
+echo " ./config_cu_qat_address.sh"
+exit 1

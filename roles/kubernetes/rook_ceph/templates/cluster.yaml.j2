@@ -1,0 +1,116 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
+metadata:
+  name: rook-ceph
+  namespace: rook-ceph 
+spec:
+  cephVersion:
+    image: quay.io/ceph/ceph:v16.2.5
+    allowUnsupported: false
+  dataDirHostPath: /var/lib/rook
+  skipUpgradeChecks: false
+  continueUpgradeAfterChecksEvenIfNotHealthy: false
+  waitTimeoutForHealthyOSDInMinutes: 10
+  mon:
+    count: {{ rook_ceph.mon_count }}
+    allowMultiplePerNode: false
+  mgr:
+    count: 1
+    modules:
+      - name: pg_autoscaler
+        enabled: true
+  dashboard:
+    enabled: true
+    ssl: true
+  monitoring:
+    enabled: false
+    rulesNamespace: rook-ceph
+  network:
+  crashCollector:
+    disable: false
+  cleanupPolicy:
+    confirmation: ""
+    sanitizeDisks:
+      method: quick
+      dataSource: zero
+      iteration: 1
+    allowUninstallWithVolumes: false
+  annotations:
+  labels:
+  resources:
+    api:
+      requests:
+        cpu: "{{ _rook_ceph_limits.api.requests.cpu }}"
+        memory: "{{ _rook_ceph_limits.api.requests.memory }}"
+      limits:
+        cpu: "{{ _rook_ceph_limits.api.limits.cpu }}"
+        memory: "{{ _rook_ceph_limits.api.limits.memory }}"
+    mgr:
+      requests:
+        cpu: "{{ _rook_ceph_limits.mgr.requests.cpu }}"
+        memory: "{{ _rook_ceph_limits.mgr.requests.memory }}"
+      limits:
+        cpu: "{{ _rook_ceph_limits.mgr.limits.cpu }}"
+        memory: "{{ _rook_ceph_limits.mgr.limits.memory }}"
+    mon:
+      requests:
+        cpu: "{{ _rook_ceph_limits.mon.requests.cpu }}"
+        memory: "{{ _rook_ceph_limits.mon.requests.memory }}"
+      limits:
+        cpu: "{{ _rook_ceph_limits.mon.limits.cpu }}"
+        memory: "{{ _rook_ceph_limits.mon.limits.memory }}"
+    osd:
+      requests:
+        cpu: "{{ _rook_ceph_limits.osd.requests.cpu }}"
+        memory: "{{ _rook_ceph_limits.osd.requests.memory }}"
+      limits:
+        cpu: "{{ _rook_ceph_limits.osd.limits.cpu }}"
+        memory: "{{ _rook_ceph_limits.osd.limits.memory }}"
+  removeOSDsIfOutAndSafeToRemove: false
+  storage: 
+    useAllNodes: false
+    useAllDevices: false
+    config:
+    nodes:
+    - name: "{{ rook_ceph.host_name }}"
+      devices:
+      - name: "{{ _rook_ceph_osd_name }}"
+        config:
+          osdsPerDevice: "{{ rook_ceph.osds_per_device }}"
+    onlyApplyOSDPlacement: false
+  disruptionManagement:
+    managePodBudgets: true
+    osdMaintenanceTimeout: 30
+    pgHealthCheckTimeout: 0
+    manageMachineDisruptionBudgets: false
+    machineDisruptionBudgetNamespace: openshift-machine-api
+  healthCheck:
+    daemonHealth:
+      mon:
+        disabled: false
+        interval: 45s
+      osd:
+        disabled: false
+        interval: 60s
+      status:
+        disabled: false
+        interval: 60s
+    livenessProbe:
+      mon:
+        disabled: false
+      mgr:
+        disabled: false
+      osd:
+        disabled: false

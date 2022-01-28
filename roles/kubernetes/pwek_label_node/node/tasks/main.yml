@@ -1,0 +1,24 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: set k8s environment for pwek
+  block:
+    - name: set k8s worker node name
+      set_fact:
+        k8s_worker_node_name: "{{ ansible_nodename | lower }}"
+
+    # label it as edge node , because DU/CU/UPF Pods of PWEK will use this label
+    - name: label node as a edge-node
+      command: kubectl label node {{ k8s_worker_node_name }} testnode=edge-node --overwrite
+      delegate_to: "{{ groups['controller_group'][0] }}"
+      changed_when: true

@@ -1,0 +1,110 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2019-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: include common vars
+  include_vars: ../defaults/main.yml
+
+- name: make sure openness, openness/certs and openness/configs exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: a=rwx
+    owner: "{{ ansible_user }}"
+    group: "{{ project_group }}"
+  loop:
+    - "{{ project_dir }}"
+    - "{{ _certs_dest }}"
+    - "{{ _configs_dest }}"
+
+- name: create system namespace if needed
+  block:
+    - name: check if system namespace exists
+      command: kubectl get ns {{ system_namespace }}
+      failed_when: false
+      register: get_ns_openness
+    - name: create system namespace
+      command: kubectl create namespace {{ system_namespace }}
+      when: get_ns_openness.rc == 1
+
+- name: generate certs of openness components
+  include_tasks: certs.yml
+
+- name: common openness facts
+  include_tasks: ../../common/tasks/main.yml
+
+- name: create Certificate Requester CA secret
+  block:
+  - name: check if Certificate Requester CA secret exists
+    command: kubectl get secret ca-certrequester
+    failed_when: false
+    register: get_secret_certrequester
+  - name: create secret with Certificate Requester certs
+    shell: >
+      kubectl create secret generic ca-certrequester
+      --from-file={{ _certs_dest }}/CA/cert.pem
+    when: get_secret_certrequester.rc != 0
+
+- name: create Certificate Requester CA secret in system namespace
+  block:
+  - name: check if Certificate Requester CA secret exists in system namespace
+    command: kubectl get secret ca-certrequester --namespace {{ system_namespace }} 
+    failed_when: false
+    register: get_secret_certrequester
+  - name: create secret with Certificate Requester certs in system namespace
+    shell: >
+      kubectl create secret generic ca-certrequester
+      --from-file={{ _certs_dest }}/CA/cert.pem
+      --namespace {{ system_namespace }}
+    when: get_secret_certrequester.rc != 0
+
+- name: appply definitions
+  block:
+  - name: prepare kustomization templates
+    template:
+      src: '{{ item }}.j2'
+      dest: '{{ _cluster_svc_yamls_dir }}/{{ item }}'
+      backup: false
+      mode: a=rw,u+x
+    loop:
+      - certsigner-volumes-update.yml
+
+  - name: copy kustomization.yml
+    copy:
+      src: "kustomization.yml"
+      dest: "{{ _cluster_svc_yamls_dir }}"
+      mode: preserve
+
+  - name: kustomize cluster-svc
+    shell: kubectl kustomize . > kustomized-cluster-svc.yml
+    args:
+      chdir: "{{ _cluster_svc_yamls_dir }}"
+    changed_when: true
+
+  - name: apply kustomized-cluster-svc.yml with changes
+    command: kubectl apply -f kustomized-cluster-svc.yml
+    args:
+      chdir: "{{ _cluster_svc_yamls_dir }}"
+    changed_when: true
+
+- name: delete certsigner definition
+  command: kubectl delete deployment certsigner -n {{ system_namespace }}
+  changed_when: true
+  when: not cert_enabled
+
+- name: copy logrotate config
+  copy:
+    src: logrotate_openness
+    dest: /etc/logrotate.d/openness
+    mode: preserve
+    remote_src: false
+  become: yes

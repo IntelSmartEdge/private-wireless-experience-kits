@@ -1,0 +1,39 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+- name: 'Update ansible host in inventory.yml'
+  lineinfile:
+    path: '{{ inventory_file }}'
+    regexp: 'ansible_host:.*$'
+    line: "      ansible_host: {{ hostvars[groups['controller_group'][0]]['ansible_host'] }}"
+    backrefs: true
+
+- name: 'Update ansible_user in inventory.yml'
+  lineinfile:
+    path: '{{ inventory_file }}'
+    regexp: 'ansible_user:.*$'
+    line: "      ansible_user: {{ hostvars[groups['controller_group'][0]]['ansible_user'] }}"
+    backrefs: true
+
+- name: Create extra vars yaml file for eis deployment
+  template:
+    src: "{{ cera_extra_vars_file }}.j2"
+    dest: "{{ eis_path }}/{{ cera_extra_vars_file }}"
+    mode: preserve
+
+- name: 'Deploy EIS'
+  command: "./deploy_eis.sh -e {{ cera_extra_vars_file }}"
+  args:
+    chdir: '{{ eis_path }}'
+  changed_when: true

@@ -1,0 +1,172 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+#UPF vars setting
+pwek_upf_cpus: "{{ dedicated_cpu.i_upf }}"
+
+#Bind vfs to dpdk
+n3_pci_bus_address: "{{ upf_side_bus_info }}"
+n6_pci_bus_address: "{{ upf_data_bus_info }}"
+
+#UPF N3 & N6 kernel driver
+n3_kernel_driver: "{{ upf_side_driver }}"
+n6_kernel_driver: "{{ upf_data_driver }}"
+
+# Modified vars for ansible template
+backhaul_upf_side_pf: "{{ backhaul.upf_side.pf }}"
+upf_data_pf: "{{ upf_data.pf }}"
+
+#clean-hugepage.sh 
+upf_clean_option: "-c"
+hsize_count: "28"
+
+# Paths for storing pwek related resources
+remote_pwek_gnodeb_path: "{{ remote_pwek_path }}"
+pwek_gnodeb_charts_path: "{{ remote_pwek_gnodeb_path }}/charts/"
+pwek_gnodeb_images_path: "{{ remote_pwek_gnodeb_path }}/images/"
+pwek_scripts_path: "{{ remote_pwek_path }}/scripts/"
+pwek_images_path: "{{ pwek_gnodeb_images_path }}"
+pwek_gnodeb_scripts_path: "{{ remote_pwek_gnodeb_path }}/scripts/"
+pwek_dpdk_path: "{{ remote_pwek_gnodeb_path }}/dpdk-19.11"
+pwek_icc: "{{ pwek_dpdk_path }}/x86_64-native-linuxapp-icc"
+pwek_acc100_path: "{{ remote_pwek_gnodeb_path }}/acc100"
+# pwek_gnodeb
+app_name: "5gnr-bbu"
+image_tag: "v1"
+gnb_docker_image_source: "import"
+
+#pwek_5gcn
+app_name_5gcn: "pwek-5gc"
+
+#varbs defined below:
+#  /deploy_cu_du.sh
+label: ""
+fronthaul_du_side_networkName0: "{{ fronthaul.du_side.networkName[0] }}"
+fronthaul_du_side_networkName1: "{{ fronthaul.du_side.networkName[1] }}"
+midhaul_du_side_networkName: "{{ midhaul.du_side.networkName }}"
+midhaul_cu_side_networkName: "{{ midhaul.cu_side.networkName }}"
+backhaul_cu_side_networkName: "{{ backhaul.cu_side.networkName }}"
+
+#clean-hugepage.sh 
+bbu_clean_option: "-b"
+#hsize_count: "28"
+
+du_mem_size: "10"
+du_hugepage_size: "28"
+cu_mem_size: "20"
+cu_hugepage_size: "10"
+
+
+#config_net_sriov_vf.sh
+sriov_numvfs: " {{ midhaul.cu_side.vf_num }}"
+
+#set_bbu_ip_config.sh and config_qat_cu_address.sh
+USER: "{{ hostvars[groups['edgenode_group'][0]]['ansible_user'] }}"
+REMOTE: "{{ hostvars[groups['edgenode_group'][0]]['ansible_host'] }}"
+harbor_addr: "{{ hostvars[groups['controller_group'][0]]['ansible_host'] }}"
+
+# OpenNESS Harbor registry variables
+#docker_registry_port: 30003
+#harbor_addr: "10.240.224.238"
+harbor_url: "{{ harbor_addr }}:{{ docker_registry_port }}/intel"
+#harbor_admin_password: "Harbor12345"
+
+#define var for flexRAN_prebuild package
+flexran_prebuild: "flexRAN_preBuild"
+flexran_prebuild_path: "/home/{{ flexran_prebuild }}"
+flexran_prebuild_e2e_path: "{{ flexran_prebuild_path }}/flexran_e2e/"
+
+#cpu_pinning
+BASE: "{{ flexran_prebuild_e2e_path }}"
+L1PATH: "{{ BASE }}/flexran_l1/flexran_l1_sw/bin/nr5g/gnb/l1"
+CUPATH: "{{ BASE }}/rsys_cu/config/sys_config.txt"
+DUPATH: "{{ BASE }}/rsys_du/config/sys_config.txt"
+SUB6_CONF: "{{ L1PATH }}/xrancfg_sub6.xml"
+PHY_CONF: "{{ L1PATH }}/phycfg_xran.xml"
+
+dedicated_cpu_phy_l1_xran_polling_thread: "{{ dedicated_cpu.phy_l1.xran_polling_thread }}"
+dedicated_cpu_phy_l1_xran_packet_processing_thread: "{{ dedicated_cpu.phy_l1.xran_packet_processing_thread }}"
+dedicated_cpu_phy_l1_system_thread: "{{ dedicated_cpu.phy_l1.system_thread }}"
+dedicated_cpu_phy_l1_timer_thread: "{{ dedicated_cpu.phy_l1.timer_thread }}"
+dedicated_cpu_phy_l1_LDPC_thread: "{{ dedicated_cpu.phy_l1.LDPC_thread }}"
+dedicated_cpu_phy_l1_radio_DPDK_master_thread: "{{ dedicated_cpu.phy_l1.radio_DPDK_master_thread }}"
+dedicated_cpu_phy_l1_BBUpool_worker_thread: "{{ dedicated_cpu.phy_l1.BBUpool_worker_thread }}"
+
+# CU CPUS
+dedicated_cpu_cu_house_keeping: "{{ dedicated_cpu.cu.house_keeping }}"
+dedicated_cpu_cu_control_plane_common: "{{ dedicated_cpu.cu.control_plane.common }}"
+
+#UDP_RX_THREAD - Applicable for FAST_PKT_RX_THREADS only
+dedicated_cpu_cu_user_plane_udp_rx_thread: "{{ dedicated_cpu.cu.user_plane.udp_rx_thread }}"
+dedicated_cpu_cu_user_plane_udp_rx_dl_thread: "{{ dedicated_cpu.cu.user_plane.udp_rx_dl_thread }}"
+dedicated_cpu_cu_user_plane_udp_rx_ul_thread: "{{ dedicated_cpu.cu.user_plane.udp_rx_ul_thread }}"
+dedicated_cpu_cu_user_plane_dl_thread: "{{ dedicated_cpu.cu.user_plane.dl_thread }}"
+dedicated_cpu_cu_user_plane_ul_thread: "{{ dedicated_cpu.cu.user_plane.ul_thread }}"
+
+#Below two parameters applicable if flag SEPARATE_UDP_TX_THREAD is enabled, currenlty not supported
+dedicated_cpu_cu_user_plane_udp_tx_dl_thread: "{{ dedicated_cpu.cu.user_plane.udp_tx_dl_thread }}"
+dedicated_cpu_cu_user_plane_udp_tx_ul_thread: "{{ dedicated_cpu.cu.user_plane.udp_tx_ul_thread }}"
+dedicated_cpu_cu_dpdk_pool_work0: "{{ dedicated_cpu.cu.dpdk_pool.work0 }}"
+
+# FAST_CRYPTO_RXFAST_CRYPTO_RX
+dedicated_cpu_cu_fast_crypto_rx: "{{ dedicated_cpu.cu.fast_crypto_rx }}"
+
+# DU CPUS
+dedicated_cpu_du_sys_house_keeping: "{{ dedicated_cpu.du.sys.house_keeping }}"
+dedicated_cpu_du_sys_lower_cl: "{{ dedicated_cpu.du.sys.lower_cl }}"
+dedicated_cpu_du_sys_cl_recv: "{{ dedicated_cpu.du.sys.cl_recv }}"
+dedicated_cpu_du_sys_udp_rx: "{{ dedicated_cpu.du.sys.udp_rx }}"
+
+# NUM_THREAD_POOL         = 1  # need to set it
+dedicated_cpu_du_thread_pool_wkr0: "{{ dedicated_cpu.du.thread_pool.wkr0 }}"
+dedicated_cpu_du_qcom_tti_recv: "{{ dedicated_cpu.du.qcom.tti_recv }}"
+dedicated_cpu_du_qcom_l1_send: "{{ dedicated_cpu.du.qcom.l1_send }}"
+
+# ----
+# NUM_LCORE               = 4  # need to set it
+dedicated_cpu_du_dpdk_pool_work0: "{{ dedicated_cpu.du.dpdk_pool.work0 }}"
+dedicated_cpu_du_dpdk_pool_work1: "{{ dedicated_cpu.du.dpdk_pool.work1 }}"
+dedicated_cpu_du_dpdk_pool_work2: "{{ dedicated_cpu.du.dpdk_pool.work2 }}"
+dedicated_cpu_du_dpdk_pool_work3: "{{ dedicated_cpu.du.dpdk_pool.work3 }}"
+
+
+
+# script config_net_sriov_vf.sh
+fronthaul_du_side_vf_num: "{{ fronthaul.du_side.vf_num }}"
+midhaul_du_side_vf_num: "{{ midhaul.du_side.vf_num }}"
+midhaul_cu_side_vf_num: "{{ midhaul.cu_side.vf_num }}"
+backhaul_cu_side_vf_num: "{{ backhaul.cu_side.vf_num }}"
+
+fronthaul_du_side_pf: "{{ fronthaul.du_side.pf }}"
+midhaul_du_side_pf: "{{ midhaul.du_side.pf }}"
+midhaul_cu_side_pf: "{{ midhaul.cu_side.pf }}"
+backhaul_cu_side_pf: "{{ backhaul.cu_side.pf }}"
+
+#script set_fh_vf.sh
+#fpga_userspace_vf_enabled: "{{ fpga_userspace_vf.enabled }}"
+#acc100_userspace_vf_enabled: "{{ acc100_userspace_vf.enabled }}"
+
+pwek_gnodeb_fronthaul_vf_mac: "00:11:22:33:44:66"
+
+# The number should be consult with RRU vendor
+du_mac_cfg_cmn_dl_rank: "{{ du_mac_cfg_cmn.dl.rank }}"
+du_mac_cfg_cmn_dl_antennaportsnum: "{{ du_mac_cfg_cmn.dl.antenna_ports_num }}"
+du_mac_cfg_cmn_ul_rank: "{{ du_mac_cfg_cmn.ul.rank }}"
+du_mac_cfg_cmn_ul_antennaportsnum: "{{ du_mac_cfg_cmn.ul.antenna_ports_num }}"
+
+# set NUM var for FPGA Userspace VF configuration
+#fpga_userspace_vf_vf_number: "{{ fpga_userspace_vf.vf_number }}"
+#acc100_userspace_vf_vf_number: "{{ acc100_userspace_vf.vf_number }}"
+
+#modify_config.sh vars setting
+setconfig_file_path: "{{ flexran_prebuild_e2e_path }}/rsys_cu/config/sys_config.txt"

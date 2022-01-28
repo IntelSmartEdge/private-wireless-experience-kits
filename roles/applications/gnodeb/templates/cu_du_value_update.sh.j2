@@ -1,0 +1,128 @@
+#!/usr/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+#value update on file
+cu_sys_cfg="/root/gnodeb/cu_du/CU/config/sys_config.txt"
+du_sys_cfg="/root/gnodeb/cu_du/DU/config/sys_config.txt"
+cu_cfg_xml="oam_3gpp_cu_sa_1du_1cell.xml"
+du_cfg_xml="oam_3gpp_cell_cfg_mu1_1cell.xml"
+cu_f1u_ip="192.168.120.195"
+cu_f1c_ip="192.168.120.196"
+du_f1c_ip="192.168.120.199"
+du_f1u_ip="192.168.200.101"
+
+
+# configure gnb N2 and N3 interface
+
+ifconfig net1 {{ gnodeb_n2_ip }} up
+ifconfig net2 {{ gnodeb_n3_ip }}
+
+# configure tap interface CU and DU 
+ifconfig net1:1 $cu_f1u_ip up
+ifconfig net1:2 $cu_f1c_ip up
+ifconfig net1:3 $du_f1c_ip up
+ifconfig net1:4 $du_f1u_ip up
+
+ping -c 5 {{ amf_n2_ip }}
+ping -c 5 {{ upf_n3_ip }}
+ping -c 3 $cu_f1u_ip
+ping -c 3 $cu_f1c_ip
+ping -c 3 $du_f1c_ip
+ping -c 3 $du_f1u_ip
+
+# update QAT VF address on sys_config.txt file
+
+cd $cuDuPath/CU/config/
+
+echo "/FAST_CRYPTO_PORT_0/ {
+    p;
+    n;
+    /PCI_ADDRESS/ {
+        s/PCI_ADDRESS.*/PCI_ADDRESS = ${QAT0}/;
+        p;
+        d;
+    }
+}
+p;" > qat_vf1.sed
+
+echo "/FAST_CRYPTO_PORT_1/ {
+    p;
+    n;
+    /PCI_ADDRESS/ {
+        s/PCI_ADDRESS.*/PCI_ADDRESS = ${QAT1}/;
+        p;
+        d;
+    }
+}
+p;" > qat_vf2.sed
+
+
+sed -i -n -f qat_vf1.sed $cu_sys_cfg
+sed -i -n -f qat_vf2.sed $cu_sys_cfg
+
+# CPU allocation for CU
+sed -i 's/{13}/{21}/' $cu_sys_cfg
+sed -i 's/{7}/{13}/' $cu_sys_cfg
+sed -i 's/{19}/{22}/' $cu_sys_cfg
+sed -i 's/{11}/{14}/' $cu_sys_cfg
+sed -i 's/{17}/{11}/' $cu_sys_cfg
+sed -i 's/{15}/{31}/' $cu_sys_cfg
+sed -i 's/{9}/{12}/' $cu_sys_cfg
+sed -i 's/CORE_ID = 3/CORE_ID = 18/' $cu_sys_cfg
+sed -i 's/UDP_RX_DL_THREAD_CORE_ID_LIST = {14}/UDP_RX_DL_THREAD_CORE_ID_LIST = {21}/' $cu_sys_cfg
+
+# CPU allocation for DU
+sed -i 's/= 10/= 15/' $du_sys_cfg
+sed -i 's/= 22/= 15/' $du_sys_cfg
+sed -i 's/= 26/= 16/' $du_sys_cfg
+sed -i 's/= 17/= 16/' $du_sys_cfg
+sed -i 's/= 18/= 15/' $du_sys_cfg
+sed -i 's/{14,18}/{17,18}/' $du_sys_cfg
+sed -i 's/CORE_ID                 = 30/CORE_ID                 = 19/' $du_sys_cfg
+sed -i 's/CORE_ID                 = 2/CORE_ID                 = 20/' $du_sys_cfg
+sed -i 's/NUM_LCORE               = 4/NUM_LCORE               = 2/' $du_sys_cfg
+sed -i 's/NUM_ETH_PORT            = 2/NUM_ETH_PORT            = 1/' $du_sys_cfg
+sed -i 's/FRONTHAUL_EN            = 1/FRONTHAUL_EN            = 0/' $du_sys_cfg
+
+#update N2 and N3 interface IP on oam_3gpp_cu_sa_1du_1cell.xml
+
+#update N2 config <EP-NgC>
+sed -i 's/<f1cServerLocalIpAddress>192.168.20.41<\/f1cServerLocalIpAddress>/<f1cServerLocalIpAddress>192.168.120.196<\/f1cServerLocalIpAddress>/g' $cu_cfg_xml
+sed -i 's/<localIpAddress>192.179.120.110<\/localIpAddress>/<localIpAddress>{{ gnodeb_n2_ip }}<\/localIpAddress>/g' $cu_cfg_xml
+sed -i 's/<remoteAddress>192.168.120.191<\/remoteAddress>/<remoteAddress>{{ amf_n2_ip }}<\/remoteAddress>/g' $cu_cfg_xml
+
+#update N3 config <EP-NgU>
+sed -i 's/<localIpAddress>192.179.120.112<\/localIpAddress>/<localIpAddress>{{ gnodeb_n3_ip }}<\/localIpAddress>/g' $cu_cfg_xml
+sed -i 's/<remoteAddress>192.179.120.180<\/remoteAddress>/<remoteAddress>{{ upf_n3_ip }}<\/remoteAddress>/g' $cu_cfg_xml
+
+# update MCC-ID,MNC-ID and TAC ID
+sed -i 's/<MCC>.*<\/MCC>/<MCC>{{ mcc_id }}<\/MCC>/g' $cu_cfg_xml
+sed -i 's/<MNC>.*<\/MNC>/<MNC>{{ mnc_id }}<\/MNC>/g' $cu_cfg_xml
+sed -i 's/<tac>.*<\/tac>/<tac>{{ tac_id }}<\/tac>/g' $cu_cfg_xml
+sed -i 's/<TAC>.*<\/TAC>/<TAC>{{ tac_id }}<\/TAC>/g' $cu_cfg_xml
+
+cp $cu_cfg_xml $cuDuPath/CU/liboam/oam_cu/cm/confd/config/
+
+cd $cuDuPath/DU/config/
+
+sed -i 's/<localIpAddress>192.168.20.42<\/localIpAddress>/<localIpAddress>192.168.120.195<\/localIpAddress>/g' $du_cfg_xml
+sed -i 's/<remoteAddress>192.168.20.41<\/remoteAddress>/<remoteAddress>192.168.120.196<\/remoteAddress>/g' $du_cfg_xml
+sed -i 's/<localIpAddress>4.4.4.5<\/localIpAddress>/<localIpAddress>192.168.120.199<\/localIpAddress>/g' $du_cfg_xml
+sed -i 's/<remoteAddress>4.4.4.3<\/remoteAddress>/<remoteAddress>192.168.200.101<\/remoteAddress>/g' $du_cfg_xml
+sed -i 's/<MCC>.*<\/MCC>/<MCC>{{ mcc_id }}<\/MCC>/g' $du_cfg_xml
+sed -i 's/<MNC>.*<\/MNC>/<MNC>{{ mnc_id }}<\/MNC>/g' $du_cfg_xml
+sed -i 's/<nRTAC>.*<\/nRTAC>/<nRTAC>{{ tac_id }}<\/nRTAC>/g' $du_cfg_xml
+
+cp $du_cfg_xml $cuDuPath/DU/liboam/oam_du/cm/confd/config/
+cd

@@ -1,0 +1,56 @@
+#!/usr/bin/expect
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+spawn {{ pwek_flexran_extracted }}/extract.sh
+expect {
+    "Extract all release packages to*" { send  "\.\n" }
+    }
+expect {
+    -ex "--More--" { send -- " "; exp_continue}
+    "*That you agree to*" { send "\Y\n"}
+
+}
+expect {
+    "*Viewing license file*" { send "\r"}
+    timeout {send "\r"; exp_continue}
+    "*Prepare to install SDK*" { exp_continue }
+}
+
+expect {
+    -ex "--More--" { send -- " "; exp_continue}
+    "*That you agree to*" { send "\Y\n"}
+}
+expect {
+    "*Viewing license file*" { send "\r"}
+    timeout {send "\r"; exp_continue}
+}
+
+expect {
+    -ex "--More--" { send -- " "; exp_continue}
+    "*That you agree to*" { send "\Y\n"}
+
+}
+expect {
+    "*Viewing license file*" { send "\r"}
+    timeout {send "\r"; exp_continue}
+}
+
+expect {
+    -ex "--More--" { send -- " "; exp_continue}
+    "*That you agree to*" { send "\Y\n"}
+}
+expect {
+    "*Viewing license file*" { send "\r"}
+    timeout {send "\r"; exp_continue}
+}

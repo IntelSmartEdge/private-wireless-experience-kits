@@ -1,0 +1,390 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: Getting upf_side pci address
+  command: "/usr/sbin/ethtool -i {{ backhaul.upf_side.pf }}"
+  register: upf_side_result
+  changed_when: false
+
+- name: Setting upf_side_result facts
+  set_fact: upf_side_driver="{{ upf_side_result.stdout_lines[0].split(' ')[1] }}" upf_side_bus_info="{{ upf_side_result.stdout_lines[4].split(' ')[1]  }}"
+
+- name: Getting upf_data pci address
+  command: "/usr/sbin/ethtool -i {{ upf_data.pf }}"
+  register: upf_data_result
+  changed_when: false
+
+- name: Setting upf_data_result facts
+  set_fact: upf_data_driver="{{ upf_data_result.stdout_lines[0].split(' ')[1] }}" upf_data_bus_info="{{ upf_data_result.stdout_lines[4].split(' ')[1]  }}"
+
+- name: transfer helm chart files to Controller 
+  block:
+  - name: 'Copy helm chart values to host'
+    template:
+      src: 'values.yaml.j2'
+      dest: '{{ pwek_gnodeb_charts_path }}{{ app_name_5gcn }}/values.yaml'
+      backup: false
+      mode: preserve
+  - name: 'Copy config: associate_port to host'
+    template:
+      src: 'associate_port.xml.j2'
+      dest: '{{ pwek_gnodeb_charts_path }}{{ app_name_5gcn }}/charts/upf/config/associate_port.xml'
+      backup: false
+      mode: preserve
+
+  - name: 'Copy config: fe-system-cfg to host'
+    template:
+      src: 'fe-system-cfg.xml.j2'
+      dest: '{{ pwek_gnodeb_charts_path }}{{ app_name_5gcn }}/charts/upf/config/fe-system-cfg.xml'
+      backup: false
+      mode: preserve
+
+  - name: 'Copy config: physical_port_ip to host'
+    template:
+      src: 'physical_port_ip.xml.j2'
+      dest: '{{ pwek_gnodeb_charts_path }}{{ app_name_5gcn }}/charts/upf/config/physical_port_ip.xml'
+      backup: false
+      mode: preserve
+
+  - name: 'Copy config: static_route to host'
+    template:
+      src: 'static_route.xml.j2'
+      dest: '{{ pwek_gnodeb_charts_path }}{{ app_name_5gcn }}/charts/upf/config/static_route.xml'
+      backup: false
+      mode: preserve
+
+  - name: Deploy 5GC
+    block:
+      - name: Copy deploy-5gcn
+        template:
+          src: deploy-5gcn.sh.j2
+          dest: "{{ pwek_gnodeb_scripts_path }}/deploy-5gcn.sh"
+          mode: a+x
+
+      - name: Deploy 5GC Pods
+        shell: >
+          cd {{ pwek_gnodeb_scripts_path }} && bash deploy-5gcn.sh
+  delegate_to: "{{ groups['controller_group'][0] }}"
+
+- name: Set MAC address on VFs
+  block:
+  - name: Set MAC on `VF0
+    command: 'ip link set {{ fronthaul.du_side.pf }} vf 0 mac {{ pwek_gnodeb_fronthaul_vf_mac }} vlan 2'
+    changed_when: false
+
+  - name: Set MAC on VF1
+    command: 'ip link set {{ fronthaul.du_side.pf }} vf 1 mac {{ pwek_gnodeb_fronthaul_vf_mac }} vlan 1'
+    changed_when: false
+
+  - name: Set vf 0 trust on
+    command: 'ip link set {{ fronthaul.du_side.pf }} vf 0 trust on'
+    changed_when: false
+ 
+  - name: Set vf 1 trust on
+    command: 'ip link set {{ fronthaul.du_side.pf }} vf 1 trust on'
+    changed_when: false
+
+  - name: Set interface up
+    command: 'ip link set {{ fronthaul.du_side.pf }} up'
+    changed_when: false
+  become: yes
+
+- name: transmit scripts to nodes assigned for CU/DU applications
+  include_tasks: ./tasks/transmit.yml
+
+- name: install packages for CU/DU applications
+  include_tasks: ./tasks/install.yml
+
+- name:  unpack {{ flexran_prebuild }}.tgz
+  block:
+  - name: Check {{ flexran_prebuild }}.tgz
+    stat:
+      path: "{{ remote_pwek_path }}/{{ flexran_prebuild }}.tgz"
+    register: tarfile_stat
+    failed_when: not tarfile_stat.stat.exists
+
+  - name: judge dir {{ flexran_prebuild }} whether is exist or not
+    stat:
+      path: "{{ flexran_prebuild_e2e_path }}/rsys_cu/config/sys_config.txt"
+    register: flexran_prebuild_check
+    failed_when: false
+
+  - name: Unarchive {{ flexran_prebuild }}.tgz
+    unarchive:
+      src: "{{ remote_pwek_path }}/{{ flexran_prebuild }}.tgz"
+      dest: "/home"
+      remote_src: yes
+      owner: "{{ ansible_user }}"
+      group: "{{ ansible_user }}"
+      mode: 0775
+    become: yes
+    when: not flexran_prebuild_check.stat.exists
+
+- name: Extract admin password
+  command: kubectl get secret --namespace harbor harbor-admin -o jsonpath="{.data.admin-password}"
+  register: harbor_password_cmd
+  delegate_to: "{{ groups['controller_group'][0] }}"
+  changed_when: false
+
+- name: store admin password
+  set_fact:
+    harbor_admin_password: "{{ harbor_password_cmd.stdout | b64decode }}"
+
+- name: '{{ app_name }} deployment'
+  block:
+  - name: login harbor registry firstly
+    command: docker login "{{ harbor_addr }}:{{ docker_registry_port }}" -uadmin -p "{{ harbor_admin_password }}"
+    retries: 60
+    delay: 15
+    failed_when: false
+
+  - name: pull {{ app_name }} image
+    docker_image:
+      name: "{{ app_name }}"
+      tag: "{{ image_tag }}"
+      source: pull
+    failed_when: false
+
+  - name: Check if the image already exists
+    shell: >
+      docker images | grep "{{ app_name }}" | grep "{{ image_tag }}" |grep "{{ harbor_addr }}"
+    register: docker_image_found
+    failed_when: false
+
+  - name: Load docker image from archive
+    docker_image:
+      name: "{{ app_name }}"
+      repository: "{{ app_name }}"
+      tag: "{{ image_tag }}"
+      load_path: "{{ pwek_images_path }}/{{ app_name }}.tar"
+      source: load
+      state: present
+    register: bbu_result
+    retries: 10
+    until: bbu_result is succeeded
+    delay: 15
+    when: docker_image_found.rc != 0
+
+  - name: Push docker image to registry
+    docker_image:
+      name: "{{ app_name }}"
+      source: local
+      repository: "{{ harbor_url }}/{{ app_name }}"
+      tag: "{{ image_tag }}"
+      push: yes
+    register: bbu_push_result
+    retries: 10
+    until: bbu_push_result is succeeded
+    delay: 15
+    when: docker_image_found.rc != 0
+
+  - name: Remove local image
+    docker_image:
+      state: absent
+      name: "{{ app_name }}"
+      tag: "{{ image_tag }}"
+    when: docker_image_found.rc != 0
+  become: yes
+  delegate_to: "{{ groups['controller_group'][0] }}"
+
+#- name: restart sriov apps
+#  command: "./restart_sriov_deviceplugin_cni.sh"
+#  args:
+#    chdir: "{{ pwek_gnodeb_scripts_path }}"
+#  changed_when: true
+
+- name: cpu pinning
+  command: "./cpu_pinning.sh"
+  args:
+    chdir: "{{ pwek_gnodeb_scripts_path }}"
+  changed_when: true
+  become: yes
+
+- name: set FH and VF
+  command: "./set_fh_vf.sh"
+  args:
+    chdir: "{{ pwek_gnodeb_scripts_path }}"
+  changed_when: true
+  become: yes
+
+- name: dpdk bind fronthaul NIC
+  command: "./dpdk_bind_front.sh"
+  args:
+    chdir: "{{ pwek_gnodeb_scripts_path }}"
+  register: ret
+  failed_when: ret.rc != 0
+  changed_when: true
+  become: yes
+
+- name: deploy cu and du
+  command: "./deploy_cu_du.sh {{ label }}"
+  args:
+    chdir: "{{ pwek_gnodeb_scripts_path }}"
+  changed_when: true
+  become: yes
+  delegate_to: "{{ groups['controller_group'][0] }}"
+
+- name: Wait for 5GC ready
+  pause:
+    minutes: 5
+
+- name: config layer
+  command: "./du_mac_cfg_cmn.sh"
+  args:
+    chdir: "{{ pwek_gnodeb_scripts_path }}"
+  changed_when: true
+  become: yes
+
+- name: config QAT number for CU
+  command: "./set-qat-vf-num.sh"
+  args:
+    chdir: "{{ pwek_gnodeb_scripts_path }}"
+  changed_when: true
+  become: yes
+
+- name: setting tmux session named autobbu
+  block:
+  - name: copy bbu_session_check scripts
+    template:
+      src: 'bbu_session_check.sh.j2'
+      dest: '{{ pwek_gnodeb_scripts_path }}/bbu_session_check.sh'
+      mode: a+x
+
+  - name: check bbu session
+    command: "./bbu_session_check.sh"
+    args:
+      chdir: "{{ pwek_gnodeb_scripts_path }}"
+    changed_when: true
+    register: bbu_check_result
+    become: yes
+
+  - name: check if tmux already up
+    command: "/usr/bin/tmux has-session -t autobbu"
+    args:
+      chdir: "{{ pwek_gnodeb_scripts_path }}"
+    changed_when: true
+    register: session_checking_result
+    failed_when: false
+    become: yes
+
+  - name: kill session if already up
+    command: "/usr/bin/tmux kill-session -t autobbu"
+    args:
+      chdir: "{{ pwek_gnodeb_scripts_path }}"
+    changed_when: true
+    when: session_checking_result.rc == 0
+    failed_when: false
+    become: yes
+
+  - name: start phy session
+    shell: "./start_phy.sh"  # noqa command-instead-of-shell
+    args:
+      chdir: "{{ pwek_gnodeb_scripts_path }}"
+    changed_when: true
+    register: phy_result
+    environment:
+      TERM: xterm
+    become: yes
+
+  - name: check phy_result var
+    debug:
+      msg: "phy_result: {{ phy_result }}"
+
+  - name: check to setup flexran PHY
+    fail:
+      msg: "Failed to Setup flexran PHY."
+    when: phy_result.rc != 0
+
+  - name: Getting QAT pci address for cu pod
+    shell: >
+      set -o pipefail && kubectl  -n {{ pwek_namespace_name }} exec pod/flexran-5gnr-bbu-l2cu -- bash -c "env |grep QAT" | awk -F"=" '{print $2}'
+    register: cu_qat_addr
+    changed_when: false
+  delegate_to: "{{ groups['controller_group'][0] }}"
+
+- name: pick up unused QAT pci address for starting cu pod
+  shell: |
+    set -o pipefail
+    qat_tmp=/tmp/pci_addr
+    function get_iommu_group(){
+      gp=$(ls /sys/bus/pci/devices/$1/iommu_group -l)
+      echo ${gp##*/}
+    }
+    function lsof_pci_vfio(){
+      gp=$(get_iommu_group $1)
+      [[ $gp =~ ^-?[0-9]+$ ]] || return 2
+      ls /dev/vfio/$gp
+      ret=$?
+      [[ $ret -ne 0 ]] && return $ret
+      lsof /dev/vfio/$gp
+    }
+    > ${qat_tmp}
+    for i in "{{ cu_qat_addr.stdout }}"
+    do
+      re=$(lsof_pci_vfio "${i}")
+      ret=$(echo "${?}")
+      if [ -z "${re}" ] & [ "${ret}" = "1" ]; then
+         echo "${i}" >> "${qat_tmp}"
+      fi
+    done
+    echo $(( `wc -l < ${qat_tmp}` /  2 - 1))
+  register: retries_qat_num
+  changed_when: false
+  become: yes
+
+- name: check retries of QAT nums
+  debug:
+    msg: "retries_qat_num: {{ retries_qat_num.stdout }}"
+
+- name: retries to start cu
+  include_tasks: start_cu.yml
+
+- name: check to setup CU
+  fail:
+    msg: "Failed to Setup CU"
+  when: cu_result.rc != 0
+
+- name: start du and rename tmux session
+  block:
+  - name: start du session
+    shell: "./start_du.sh" # noqa command-instead-of-shell
+    args:
+      chdir: "{{ pwek_gnodeb_scripts_path }}"
+    changed_when: true
+    register: du_result
+    environment:
+      TERM: xterm
+  - name: print du session result
+    debug:
+      msg: "du_result: {{ du_result }}"
+
+  - name: print error when du setup fails
+    fail: msg="Failed to Setup CELL(du related)"
+    when: du_result.rc != 0
+
+  - name: rename session phy
+    shell: "/usr/bin/tmux rename-window -t autobbu:0 phy" # noqa command-instead-of-shell
+    register: phy_renaming_result
+    changed_when: false
+
+  - name: rename session cu
+    shell: "/usr/bin/tmux rename-window -t autobbu:1 cu" # noqa command-instead-of-shell
+    register: cu_renaming_result
+    changed_when: false
+
+  - name: rename session du
+    shell: "/usr/bin/tmux rename-window -t autobbu:2 du" # noqa command-instead-of-shell
+    register: du_renaming_result
+    changed_when: false
+  become: yes
+  delegate_to: "{{ groups['controller_group'][0] }}"

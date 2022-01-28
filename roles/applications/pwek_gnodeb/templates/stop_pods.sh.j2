@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+kubectl -n {{ pwek_namespace_name }} delete pod flexran-5gnr-bbu-l1du flexran-5gnr-bbu-l2cu --grace-period=0 --force
+sleep 6
+echo "===> check whether deleted!"
+kubectl -n {{ pwek_namespace_name }} get pod flexran-5gnr-bbu-l1du && kubectl -n {{ pwek_namespace_name }} get pod flexran-5gnr-bbu-l2cu

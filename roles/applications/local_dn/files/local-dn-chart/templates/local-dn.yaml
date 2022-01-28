@@ -1,0 +1,42 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: "{{ .Values.namespace }}"
+  annotations:
+    k8s.v1.cni.cncf.io/networks: sriov-openness-vf-g2
+  name: "{{ .Release.Name }}"
+  labels:
+    app: "{{ .Release.Name }}"
+spec:
+  nodeName: "{{ .Values.nodeName }}"
+  containers:
+    - name: "{{ .Release.Name }}"
+      image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+      securityContext:
+         privileged: {{ .Values.isPrivileged }}
+      command:
+        - "/bin/sh"
+        - "-c"
+        - "/home/local-dn/run_local_dn.sh"
+      resources:
+        limits:
+          intel.com/intel_sriov_VF_G2: '1'
+        requests:
+          intel.com/intel_sriov_VF_G2: '1'
+      ports:
+        - containerPort: 2001
+          name: rtp-receive
+        - containerPort: 8554
+          name: rtsp-host

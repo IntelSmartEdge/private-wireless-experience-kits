@@ -1,0 +1,62 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+image:
+  repository: {{ openness_harbor_registry_address }}/{{ app_name }}
+  tag: "{{ image_tag }}"              # The tag identifying the upf docker image,
+  pullPolicy: IfNotPresent            # Pull policy for docker image
+
+restartPolicy: Never                  # Restart policy for the pod
+allowPrivilegeEscalation: true        # Allow privilege escalation level values: true false
+isPrivileged: true                    # Pod privilege level, possible values: true false
+
+#huge pages information
+hugePageSize: hugepages-1Gi           # Possible values: hugepages-1Gi hugepages-2Mi
+hugePageAmount: 4Gi                   # Amount of hugepages to be reserved for the pod
+memory: 6Gi                           # Amount of memory to be reserved for the pod
+
+#node information
+node:
+  name: {{ node_name }}               # Node on which the upf needs to be run
+  path: /home/nruser                  # Path on the node where the upf binary is stored
+
+# upf configuration
+upf:
+  vf_if_name: {{ n6_vf_interface_name }}        # VF Interface name
+  pci_bus_addr: {{ n6_pci_bus_address }}        # full format of the PCI bus addr of the VF interface the UPF needs to be attached
+  uio_driver: {{ dpdk_driver_upf }}             # UIO driver used. Options are: igb_uio, vfio-pci
+  huge_memory: 4G                               # huge page amount
+  main_core: "1"                                # main core
+  worker_cores: "2,3"                           # worker cores
+  pfcp_thread:
+    cores: "4"                                  # cores for the pfcp thread
+    count: "1"                                  # number of pfcp threads
+  n3_addr: 192.179.110.170/24                   # ip address of the n3 interface along with subnet
+  n4_addr: 192.179.120.170                      # ip address of the n4 interface along with subnet
+  n6_addr: 192.168.1.170/24                     # ip address of the n6 interface along with subnet
+  n6_gw_addr: 192.168.1.1                       # ip address of the n6 gateway
+  path: ""                                      # upf path
+
+#auto-startup of upf
+upf_autostart: true                             # auto-start upf on default
+
+# extended upf configuration
+upf_extended:
+  n3_if_name: "{{ n3_vf_interface_name }}"         # VF Interface name
+  n3_if_mac: "aa:bb:cc:3d:06:00"                   # VF Interface MAC address
+  n3_pci_bus_addr: "{{ n3_pci_bus_address }}"      # full format of the PCI bus addr of the VF interface the UPF needs to be attached
+  n3_uio_driver: "{{ dpdk_driver_upf }}"           # UIO driver used. Options are: igb_uio, vfio-pci
+
+  n4_if_name: "{{ n4_n9_vf_interface_name }}"      # VF Interface name
+  n4_pci_bus_addr: "{{ n4_n9_pci_bus_address }}"   # full format of the PCI bus addr of the VF interface the UPF needs to be attached
+  n4_uio_driver: "{{ dpdk_driver_upf }}"           # UIO driver used. Options are: igb_uio, vfio-pci

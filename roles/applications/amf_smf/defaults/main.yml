@@ -1,0 +1,24 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+app_name: "amf-smf"
+interface_name: "net1"
+package_5gc_path: "/root/amf-smf/"
+xml_5gc_configs_path: "{{ package_5gc_path }}/smf/smf1/xml"
+pfd_config_file_path: "{{ xml_5gc_configs_path }}/pfd.xml"
+sm_policy_config_file_path: "{{ xml_5gc_configs_path }}/sm-policy-data.xml.MUPF"
+local_dn_subnet: "192.168.1.0/24"
+routed_app_id: 3001
+config_5gc_script_path: "/opt/amf-smf/"
+
+image_tag: "1.0"

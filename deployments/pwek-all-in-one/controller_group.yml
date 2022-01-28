@@ -1,0 +1,47 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+# Kernel configuration
+kernel_rt_enable: true
+
+# Version of the kernel.
+# should use 3.10.0-1127.19.1.rt56.1116.el7.x86_64
+# rt_kernel_version: "3.10.0-1160.11.1.rt56.1145.el7.x86_64"
+# rt_kernel_version: "3.10.0-1062.12.1.rt56.1042.el7.x86_64"
+rt_kernel_version: "3.10.0-1127.19.1.rt56.1116.el7.x86_64"
+setup_user_defined_kernel_rt_repo: true
+
+# custom tuned packages defined for kernel rt
+install_custom_tuned: true
+tuned_packages:
+  - http://linuxsoft.cern.ch/scientific/7x/x86_64/os/Packages/tuned-2.11.0-9.el7.noarch.rpm
+  - http://linuxsoft.cern.ch/scientific/7x/x86_64/os/Packages/tuned-profiles-realtime-2.11.0-9.el7.noarch.rpm
+
+# enable ntp service
+ntp_enable: true
+ntp_servers: ["ccr.corp.intel.com"] # the address needs to be filled before deployment
+
+# Enabled hugepages
+hugepages_enabled: true
+
+## GRUB configuration
+# Default grub parameters
+default_grub_params: "intel_iommu=on iommu=pt"
+# Enabled additional grub parameters
+additional_grub_parameters_enabled: true
+additional_grub_params: "idle=poll"
+
+### PWEK All in One applications configuration
+# Enabling roles in the IDO main playbook
+edgeapps_repo_enable: false

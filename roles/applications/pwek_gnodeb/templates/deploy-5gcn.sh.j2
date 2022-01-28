@@ -1,0 +1,266 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+NGCN3={{ backhaul_upf_side_pf }}
+NGCN6={{ upf_data_pf }}
+
+CNCHART={{ pwek_gnodeb_charts_path }}{{ app_name_5gcn }}
+# The first is main, and others are workers.
+CPUS={{ pwek_upf_cpus }}
+
+# MF_LABLE='{"testnode": "edge-cp"}'
+MF_LABLE='{"mfnode": "true"}'
+
+ANNIPS="\"cni\.projectcalico\.org/ipAddrs\""
+
+HMC="helm install -n {{ pwek_namespace_name }}"
+
+function get_cpu_list(){
+cpus=$1
+cpu_l=""
+for i in `echo $cpus | tr , " "`; do
+  if [[ $i =~ "-" ]]; then
+    bg=${i%%-*}
+    en=${i##*-}
+    for j in $(seq $bg $en);do
+      if [ -z "$cpu_l" ]; then
+        cpu_l=$j
+      else
+        cpu_l="$cpu_l $j"
+      fi
+    done
+  else
+    if [ -z "$cpu_l" ]; then
+        cpu_l=$i
+      else
+        cpu_l="$cpu_l $i"
+    fi
+  fi
+done
+echo $cpu_l
+}
+
+function list2bits(){
+  order=`tr " " "\n" <<< "$1" | sort -n -r | tr "\n" " "`
+  max=`cut -d" " -f1 <<< "$order"`
+  len=$((max + 1))
+  res=`printf '0%.0s' $(seq 1 $len)`
+  # echo "bin: $res"
+  for i in $order; do
+    idx=$((len - i))
+    # echo "iri $dx"
+    res=${res:0:idx-1}1${res:idx}
+    # echo "bin: $res"
+  done
+  res=`echo "obase=16;ibase=2;$res" | bc`
+  res=${res,,}
+  echo 0x$res
+}
+
+function h64bits(){
+  d=${1#0x}
+  len=`wc -c <<< $d`
+  len=$((len-1))
+  if [ $len -gt 16 ]; then
+    l=$((len-16))
+    echo 0x${d:0:l}
+  else
+     echo 0x0
+  fi
+}
+
+function l64bits(){
+  d=${1#0x}
+  len=`wc -c <<< $d`
+  len=$((len-1))
+  if [ $len -gt 16 ]; then
+    l=$((len-16))
+    r0=${d:l:len}
+    # r=${r0##+(0)}
+    # sed -e "s/^0*//" <<< $r0
+    r=`sed -e "s/^0*//" <<< $r0`
+    echo 0x$r
+  else
+    echo $1
+  fi
+}
+
+CPUL=`get_cpu_list $CPUS`
+CPUM=`cut -d" " -f1 <<< $CPUL`
+CPUW=`cut -d" " -f2- <<< $CPUL`
+# CPUW=`tr " " "\n" <<< $CPUW | sort | tr "\n" " "`
+BITW=$(list2bits "$CPUW")
+BITWL64=`l64bits "$BITW"`
+l64bits "$BITW"
+BITWH64=`h64bits "$BITW"`
+NUMW=`wc -w <<< $CPUW`
+MAXCPU=`cut -d" " -f1 <<< $CPUW`
+CPUW=`tr -s '[:blank:]' ',' <<<"$CPUW"`
+echo "main thread runs on core: $CPUM"
+echo "worker threads run on cores: $CPUW, bitmap: $BITW, high 64 bits: $BITWH64, low 64 bits: $BITWL64"
+echo "worker threads numnber: $NUMW"
+# exit 1
+
+TEMPFILE=$CNCHART/charts/upf/config/vpp_startup_template.conf
+sed -i -e "s/main-core .*/main-core $CPUM/" $TEMPFILE
+sed -i -e "s/corelist-workers .*/corelist-workers $CPUW/" $TEMPFILE
+sed -i -e "s/^\(\s\+workers\) .*/\1 $NUMW/" $TEMPFILE
+echo "Set cores pinning in $CNCHART/charts/upf/config/vpp_startup_template.conf"
+
+
+WK=`kubectl get nodes -l node-role.kubernetes.io/worker=worker -o name`
+MS=`kubectl get nodes -l node-role.kubernetes.io/worker=worker -o name`
+# MS=`kubectl get nodes -l node-role.kubernetes.io/master= -o name`
+
+if [ -z "$NGCN3" ] || [ -z "$NGCN6" ]; then
+    kubectl get nodes -l node-role.kubernetes.io/worker=worker  -o \
+      custom-columns=NAME:.metadata.name,ADDR:.status.addresses[0].address
+    echo "Please set: NGCN3=$NGCN3 NGCN6=$NGCN6 "
+    exit 1                                      
+fi
+kubectl get ippools default-ipv4-ippool  -o json | jq .spec.cidr
+
+# set NODE
+kubectl get nodes
+# WK=flexran-edge-node
+NODE=
+NODE=${NODE:-$WK}
+NODE=${NODE#*/}
+
+kubectl get BlockAffinity -o=jsonpath="{range .items[*]}{.spec.cidr}{'\t'}{.spec.node}{'\n'}{end}"
+kubectl get BlockAffinity -o=jsonpath="{range .items[?(.spec.node==\"$NODE\")]}{.spec.cidr}{'\t'}{.metadata.name}{'\n'}{end}"
+
+echo "On: $NODE"
+IPNODE=`kubectl get BlockAffinity -o=jsonpath="{range .items[?(.spec.node==\"$NODE\")]}{.spec.cidr}{'\t'}{.metadata.name}{'\n'}{end}" |tail -n1`
+WK_IP=`cut -d / -f 1 <<< $IPNODE`
+IPBLOCK=`cut -d " " -f 2 <<< $IPNODE`
+IPBLOCK=${IPBLOCK#*$NODE-}
+WK_IPINDEXS=`kubectl get ipamblock $IPBLOCK -o=jsonpath="{ .spec.unallocated }" | jq '.[-3:]'`
+echo "----------------------"
+echo $WK_IP
+echo $IPBLOCK
+echo $WK_IPINDEXS
+echo "====================="
+
+if [ $MS != $WK ] ;then
+  NODE=
+  NODE=${NODE:-$MS}
+  NODE=${NODE#*/}
+  kubectl get BlockAffinity -o=jsonpath="{range .items[*]}{.spec.cidr}{'\t'}{.spec.node}{'\n'}{end}"
+  kubectl get BlockAffinity -o=jsonpath="{range .items[?(.spec.node==\"$NODE\")]}{.spec.cidr}{'\t'}{.metadata.name}{'\n'}{end}"
+
+  echo "On: $NODE"
+  IPNODE=`kubectl get BlockAffinity -o=jsonpath="{range .items[?(.spec.node==\"$NODE\")]}{.spec.cidr}{'\t'}{.metadata.name}{'\n'}{end}" |tail -n1`
+  MS_IP=`cut -d / -f 1 <<< $IPNODE`
+  IPBLOCK=`cut -d " " -f 2 <<< $IPNODE`
+  IPBLOCK=${IPBLOCK#*$NODE-}
+  MS_IPINDEXS=`kubectl get ipamblock $IPBLOCK -o=jsonpath="{ .spec.unallocated }" | jq '.[-3:]'`
+  echo "----------------------"
+  echo $MS_IP
+  echo $IPBLOCK
+  echo $MS_IPINDEXS
+  echo "====================="
+else
+  MS_IPINDEXS=$WK_IPINDEXS
+  MS_IP=$WK_IP
+fi
+
+IPINDEXS=$WK_IPINDEXS
+IP=$WK_IP
+UPFIP=20.20.15.3
+UPFIP=${IP%.*}.$((${IP##*.} + $(jq '.[0]' <<<  $IPINDEXS)))
+
+IPINDEXS=$MS_IPINDEXS
+IP=$MS_IP
+SMFIP=20.20.15.1
+SMFIP=${IP%.*}.$((${IP##*.} + $(jq '.[1]' <<<  $IPINDEXS)))
+AMFIP=20.20.15.2
+AMFIP=${IP%.*}.$((${IP##*.} + $(jq '.[2]' <<<  $IPINDEXS)))
+echo "smf=$SMFIP, upf=$UPFIP, amf=$AMFIP" 
+
+# exit 
+
+# $1 element tag, $2 element value, $3 the n time occurrent, $4 file name
+function sub_xml_val ()
+{
+  sed -i -e ':a;N;$!ba; s/[^>]*\(<\/'"$1"'>\)/'"$2"'\1/'"$3"'' $4
+}
+
+# ----------------  associate_port.xml and  physical_port_ip.xml -----------------------
+# sed -i -e "0,/\(<$XEL>\).*\(<\/$XEL>\)/{s//\1$NGCN3\2/}" $CNCHART/charts/upf/config/associate_port.xml
+# sed -i -e "0,/\(<$XEL>\).*\(<\/$XEL>\)/{s//\1$NGCN3\2/}" $CNCHART/charts/upf/config/physical_port_ip.xml
+# First time
+XEL=port-name VAL=$NGCN3 CUR=1
+XML=$CNCHART/charts/upf/config/associate_port.xml
+sub_xml_val $XEL $VAL $CUR $XML
+XML=$CNCHART/charts/upf/config/physical_port_ip.xml
+sub_xml_val $XEL $VAL $CUR $XML
+
+# Second time
+XEL=port-name VAL=$NGCN6 CUR=2
+XML=$CNCHART/charts/upf/config/associate_port.xml
+sub_xml_val $XEL $VAL $CUR $XML
+XML=$CNCHART/charts/upf/config/physical_port_ip.xml
+sub_xml_val $XEL $VAL $CUR $XML
+
+# ----------------  fe-system-cfg.xml -----------------------
+# sed ':a;N;$!ba; s/[^>]*\(<\/'"$XEL"'>\)/'"$VAL"'\1/2' $CNCHART/charts/upf/config/fe-system-cfg.xml
+# sed ':a;N;$!ba; s/[^>]*\(<\/'"$XEL"'>\)/'"$VAL"'\1/'"$CUR"'' $CNCHART/charts/upf/config/fe-system-cfg.xml
+# second occurrence
+XEL=id VAL=$NGCN3 CUR=2
+XML=$CNCHART/charts/upf/config/fe-system-cfg.xml
+sub_xml_val $XEL $VAL $CUR $XML
+# third occurrence
+XEL=id VAL=$NGCN6 CUR=3
+sub_xml_val $XEL $VAL $CUR $XML
+
+# ----------------  static_route.xml -----------------------
+XML=$CNCHART/charts/upf/config/static_route.xml
+# First time
+XEL=next-hop-intf VAL=$NGCN3 CUR=1
+sub_xml_val $XEL $VAL $CUR $XML
+# Second time
+XEL=next-hop-intf VAL=$NGCN6 CUR=2
+sub_xml_val $XEL $VAL $CUR $XML
+
+grep -e "$NGCN3" -e "$NGCN6" $CNCHART/charts/upf/config/*.xml
+
+sed -i -e "/^upfPodIp: .*$/d"  $CNCHART/charts/upf/values.yaml 
+grep upfPodIp $CNCHART/charts/upf/values.yaml
+[[ $? -ne 0 ]] && echo "upfPodIp: \"$UPFIP\"" >> $CNCHART/charts/upf/values.yaml
+tail -n1 $CNCHART/charts/upf/values.yaml
+
+sed -i -e "s@^\(.*\"cni.projectcalico.org/ipAddrs\": \).*@\1\"[\\\\\"{{ '{{' }} .Values.upfPodIp {{ '}}' }}\\\\\"]\"@" $CNCHART/charts/upf/templates/deployment.yaml
+
+# set amf
+sed -i -e "s@^\(.*\"cni.projectcalico.org/ipAddrs\": \).*@\1\"[\\\\\"$AMFIP\\\\\"]\"@" $CNCHART/charts/amf/values.yaml
+
+
+# set smf
+sed -i -e "s@^\(.*\"cni.projectcalico.org/ipAddrs\": \).*@\1\"[\\\\\"$SMFIP\\\\\"]\"@" $CNCHART/charts/smf/values.yaml
+
+# print
+echo "NGU=$NGCN3, N6=$NGCN6"
+echo "AMFIP=$AMFIP, SMFIP=$SMFIP, UPFIP=$UPFIP"
+
+$HMC cn $CNCHART \
+  --set upf.nguInterfaceName=$NGCN3 --set upf.n6InterfaceName=$NGCN6 \
+  --set upf.appconfig.interfaceInfo.nguInterfaceName=$NGCN3 \
+  --set upf.appconfig.interfaceInfo.n6InterfaceName=$NGCN6 \
+  --set upf.podAnnotations."cni\.projectcalico\.org/ipAddrs"="[\"${UPFIP:-20.20.15.196}\"]" \
+  --set amf.podAnnotations."cni\.projectcalico\.org/ipAddrs"="[\"${AMFIP:-20.20.15.194}\"]" \
+  --set smf.podAnnotations."cni\.projectcalico\.org/ipAddrs"="[\"${SMFIP:-20.20.15.195}\"]" \
+  --set smf.properties.amfPodIp=${AMFIP:-20.20.15.0} \
+  --set smf.appconfig.amfPodIp=${AMFIP:-20.20.15.0}
+  # --set amf.nodeSelector="$MF_LABLE" --set smf.nodeSelector="$MF_LABLE"

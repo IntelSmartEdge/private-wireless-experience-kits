@@ -1,0 +1,36 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2021-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+- name: Create directory for Network Policies
+  file:
+    state: directory
+    path: "{{ _pwek_network_policies_dir }}"
+    owner: "{{ project_user }}"
+    group: "{{ project_group }}"
+    mode: a=rx,u+w
+  become: true
+
+- name: Create Network Policies from templates
+  template:
+    src: "{{ item }}"
+    dest: "{{ _pwek_network_policies_dir }}/{{ item | basename | regex_replace('\\.j2$', '') }}"
+    mode: preserve
+  with_fileglob:
+    - "{{ role_path }}/templates/*.j2"
+
+- name: Apply PWEK Network Policies
+  command: kubectl apply -f  ./
+  args:
+    chdir: "{{ _pwek_network_policies_dir }}"
+  changed_when: true

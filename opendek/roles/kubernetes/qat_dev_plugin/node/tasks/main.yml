@@ -1,0 +1,123 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2019-2020 Intel Corporation
+
+---
+
+- name: discover QAT Physical Functions
+  shell: "set -o pipefail && for i in {{ qat_dev_ids|join(' ') }}; do /usr/sbin/lspci -d {{ manufacturer_id }}:$i -D | awk '{ print $1 }'; done"
+  register: qat_pf
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: discover QAT Virtual Functions
+  shell: "set -o pipefail && /usr/sbin/lspci -d {{ manufacturer_id }}:{{ qat_vf_dev_id }} -D | awk '{ print $1 }'"
+  register: qat_vfs
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Enable rc-local.service on startup
+  file:
+    dest: "/lib/systemd/system/rc-local.service"
+    mode: a=rx,u+w
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: Add rc-local.service on startup
+  lineinfile:
+      state: present
+      dest: "/lib/systemd/system/rc-local.service"
+      line: '[Install]'
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: Add rc-local.service on startup
+  lineinfile:
+      state: present
+      dest: "/lib/systemd/system/rc-local.service"
+      line: 'WantedBy=multi-user.target'
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: Add rc-local.service on startup
+  lineinfile:
+      state: present
+      dest: "/lib/systemd/system/rc-local.service"
+      line: 'Alias=rc-local.service'
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: Create softlink for startup
+  file:
+    src: "/lib/systemd/system/rc-local.service"
+    dest: "/etc/systemd/system/rc-local.service"
+    force: yes
+    state: link
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: Create a directory if it does not exist
+  file:
+    path: "{{ _rc_local_path }}"
+    state: touch
+    mode: a=rx,u+w
+  when: ansible_os_family == "Debian"
+  become: yes
+
+- name: Re-enable SR-IOV Virtual Functions for QAT devices
+  block:
+  - name: reset SR-IOV Virtual Functions for QAT devices
+    shell: echo 0 > /sys/bus/pci/devices/{{ item }}/sriov_numvfs
+    loop: "{{ qat_pf.stdout_lines }}"
+    become: yes
+    failed_when: false
+    changed_when: true
+
+  - name: enable SR-IOV Virtual Functions for QAT devices
+    shell: echo {{ qat_sriov_numvfs }} > "/sys/bus/pci/devices/{{ item }}/sriov_numvfs"
+    loop: "{{ qat_pf.stdout_lines }}"
+    become: yes
+    failed_when: false
+    changed_when: true
+  when: qat_pf.stdout | length > 0 and qat_vfs.stdout | length == 0
+
+- name: Bind SR-IOV Virtual Functions for QAT devices
+  block:
+  - name: enable creation of QAT SRIOV VFs on boot
+    lineinfile:
+      state: present
+      dest: "{{ _rc_local_path }}"
+      line: echo {{ qat_sriov_numvfs }} > "/sys/bus/pci/devices/{{ item }}/sriov_numvfs"
+    loop: "{{ qat_pf.stdout_lines }}"
+    become: yes
+
+  - name: discover QAT Virtual Functions
+    shell: "set -o pipefail && /usr/sbin/lspci -d {{ manufacturer_id }}:{{ qat_vf_dev_id }} -D | awk '{ print $1 }'"
+    register: qat_vfs_origin
+    args:
+      executable: /bin/bash
+    changed_when: false
+
+  - name: get qat_vfs_origin.stdout_lines
+    set_fact:
+      qat_vfs_stdout_lines: "{{ qat_vfs_origin.stdout_lines }}"
+
+  - name: bind QAT VFs to selected driver
+    include_role:
+      name: infrastructure/bind_device_to_driver
+    vars:
+      - pci_address: "{{ item }}"
+      - driver: "{{ qat_vf_driver }}"
+      - rc_local_path: "{{ _rc_local_path }}"
+    loop: "{{ qat_vfs_stdout_lines }}"
+  when: qat_pf.stdout | length > 0
+
+- name: Write bash title
+  lineinfile:
+    dest: "{{ _rc_local_path }}"
+    state: present
+    insertbefore: BOF
+    line: '#!/bin/bash'
+  when: ansible_os_family == "Debian"
+  become: yes

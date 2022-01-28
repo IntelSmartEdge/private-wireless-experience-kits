@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+{% if fpga_sriov_userspace_enable == true and fpga_userspace_vf_enabled == true %}
+PF=0d8f
+NUM={{ fpga_userspace_vf_vf_number }}
+{% elif acc100_sriov_userspace_enable == true and acc100_userspace_vf_enabled == true %}
+PF=0d5c
+NUM={{ acc100_userspace_vf_vf_number }}
+{% endif %}
+# FPGA
+#PF=0d8f
+# ACC100
+#PF=0d5c
+
+BDF=`lspci -nnv | grep $PF | awk -F ' ' '{print $1}'` 
+RAN_P={{ flexran_prebuild_path }}
+echo "BDF=$BDF,RAN_P=$RAN_P"
+dr=`ls /sys/bus/pci/devices/0000:${BDF}/driver -l`
+dr=${dr##*/}
+if [ "$dr" != "igb_uio" ]; then
+  {{ pwek_dpdk_path }}/usertools/dpdk-devbind.py -u $BDF
+  {{ pwek_dpdk_path }}/usertools/dpdk-devbind.py -b igb_uio 0000:$BDF
+else
+  echo "0000:$BDF Driver is: $dr"
+fi
+
+if [ "$PF" != "0d8f" ]; then
+  FPGA_VFBDF=`lspci -nnv |grep 8086:0d5d|head -n $NUM|awk '{print "0000:"$1}'`
+else
+  FPGA_VFBDF=`lspci -nnv |grep 8086:0d90|head -n $NUM|awk '{print "0000:"$1}'`
+fi
+
+VF1=`cut -d " " -f 1 <<< $FPGA_VFBDF`
+if [ -z $VF1 ]; then
+  echo "Does not enable N3000 VF, please check the configue"
+fi
+
+if [ "$PF" != "0d8f" ]; then
+     {{ pwek_acc100_path }}/pf-bb-config/pf_bb_config ACC100 -c /opt/pwek/acc100/pf-bb-config/acc100/acc100_config_vf_5g.cfg -p 0000:$BDF
+     # /opt/openness/acc100/pf-bb-config/acc100/acc100_config_vf_5g.cfg -p 0000:$BDF
+     echo "{{ pwek_acc100_path }}/pf-bb-config/pf_bb_config ACC100 -c /opt/pwek/acc100/pf-bb-config/acc100/acc100_config_vf_5g.cfg -p 0000:$BDF" 
+     cat /etc/rc.d/rc.local | grep "pf_bb_config ACC100">/dev/null
+     if [ $? -ne 0 ]
+      then
+        echo "{{ pwek_acc100_path }}/pf-bb-config/pf_bb_config ACC100 -c /opt/pwek/acc100/pf-bb-config/acc100/acc100_config_vf_5g.cfg -p 0000:$BDF" >> /etc/rc.d/rc.local 
+      fi
+else
+  $RAN_P/flexran_e2e/flexran_l1/flexran_l1_sw/misc/bbdev_config_service/config_bbdev FPGA_5GNR -f 2 -c \
+  $RAN_P/flexran_e2e/flexran_l1/flexran_l1_sw/misc/bbdev_config_service/fpga_5gnr/fpga_5gnr_config_vf.cfg -p 0000:$BDF 
+  echo "$RAN_P/flexran_e2e/flexran_l1/flexran_l1_sw/misc/bbdev_config_service/config_bbdev FPGA_5GNR -f 2 -c $RAN_P/flexran_e2e/flexran_l1/flexran_l1_sw/misc/bbdev_config_service/fpga_5gnr/fpga_5gnr_config_vf.cfg -p 0000:$BDF"
+fi
+
+dr=`ls /sys/bus/pci/devices/${VF1}/driver -l`
+dr=${dr##*/}
+if [ "$dr" != "vfio-pci" ]; then
+  {{ pwek_dpdk_path }}/usertools/dpdk-devbind.py -b vfio-pci $FPGA_VFBDF 
+else
+  echo "${VF1} Driver is: $dr"
+fi

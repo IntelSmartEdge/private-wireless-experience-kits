@@ -1,0 +1,83 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+- name: '5gc deployment'
+  block:
+  - name: Extract admin password
+    command: kubectl get secret --namespace harbor harbor-admin -o jsonpath="{.data.admin-password}"
+    register: harbor_password_cmd
+    delegate_to: "{{ groups['controller_group'][0] }}"
+    changed_when: false
+
+  - name: store admin password
+    set_fact:
+      harbor_admin_password: "{{ harbor_password_cmd.stdout | b64decode }}"
+
+  - name: login harbor registry firstly
+    command: docker login "{{ openness_harbor_registry_ip }}:{{ docker_registry_port }}" -uadmin -p "{{ harbor_admin_password }}"
+    retries: 60
+    delay: 15
+    failed_when: false
+
+  - name: pull {{ item.0 }} image
+    docker_image:
+      name: "{{ item.0 }}"
+      tag: "{{ item.1 }}"
+      source: pull
+    failed_when: false
+
+  - name: Check if the image already exists
+    shell: >
+      set -o pipefail && docker images | grep "{{ item.0 }}" | grep "{{ item.1 }}" |grep "{{ openness_harbor_registry_ip }}"
+    register: docker_image_found
+    failed_when: false
+
+#  - include_tasks: build.yml
+#    when: docker_image_found.rc != 0 and '{{ 5gc_docker_image_source }}'  == 'build'
+
+  - name: Load docker image from archive
+    docker_image:
+      name: "{{ item.0 }}"
+      repository: "{{ item.0 }}"
+      tag: "{{ item.1 }}"
+      load_path: "{{ pwek_images_path }}/{{ item.0 }}.tar"
+      source: load
+      state: present
+    register: result
+    retries: 10
+    until: result is succeeded
+    delay: 15
+    when: docker_image_found.rc != 0
+
+  - name: Push docker image to registry
+    docker_image:
+      name: "{{ item.0 }}"
+      source: local
+      repository: "{{ openness_harbor_registry_address }}/{{ item.0 }}"
+      tag: "{{ item.1 }}"
+      push: yes
+    register: push_result
+    retries: 10
+    until: push_result is succeeded
+    delay: 15
+    when: docker_image_found.rc != 0
+
+  - name: Remove local image
+    docker_image:
+      state: absent
+      name: "{{ item.0 }}"
+      tag: "{{ item.1 }}"
+    when: docker_image_found.rc != 0
+  become: yes
+ # - name: 'Deploy 5gc POD'
+ #   command: 'helm install -n {{ pwek_namespace_name }} --set isPrivileged=true {{ item.0 }} {{ pwek_charts_path }}'
+ #   changed_when: false

@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2021 Intel Corporation
+
+---
+all:
+  vars:
+    cluster_name: dek_test        # NOTE: Use `_` instead of spaces.
+    deployment: pwek-all-in-one     # NOTE: Available deployment type: pwek-upf-apps and pwek-all-in-one.
+    single_node_deployment: false  # Request single node deployment (true/false).
+    limit:                        # Limit ansible deployment to certain inventory group or hosts
+controller_group:
+  hosts:
+    controller:
+      ansible_host: 10.67.111.143
+      ansible_user: root
+edgenode_group:
+  hosts:
+    node01:
+      ansible_host: 10.67.111.146
+      ansible_user: root
+ptp_master:
+  hosts:
+ptp_slave_group:
+  hosts:
+    node01:
+      ansible_host: 10.67.111.146
+      ansible_user: root

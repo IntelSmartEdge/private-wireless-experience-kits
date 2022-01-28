@@ -1,0 +1,41 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2021-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+- hosts: controller_group
+  any_errors_fatal: true
+  roles:
+  - role: kubernetes/cnca
+    when: ne_ngc_enable | default(False)
+
+  - role: kubernetes/kubevirt
+    when: kubevirt_enable | default(True)
+
+  - role: kubernetes/rook_ceph
+    when: rook_ceph.enabled | default(False)
+
+  - role: kubernetes/nsm
+    when: ne_nsm_enable | default(False)
+
+  - role: kubernetes/network_policies
+    when: network_policies_enable | default(False)
+
+  - role: kubernetes/pwek_label_node/controlplane
+    when: pwek_enable | default(false)
+
+- hosts: edgenode_group
+  any_errors_fatal: true
+  roles:
+  - role: kubernetes/pwek_label_node/node
+    when: pwek_enable | default(false)
+  

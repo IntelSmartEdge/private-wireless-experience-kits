@@ -1,0 +1,56 @@
+{#
+INTEL CONFIDENTIAL
+Copyright 2020-2020 Intel Corporation.
+This software and the related documents are Intel copyrighted materials, and your use of
+them is governed by the express license under which they were provided to you ("License").
+Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+disclose or transmit this software or the related documents without Intel's prior written permission.
+This software and the related documents are provided as is, with no express or implied warranties,
+other than those that are expressly stated in the License.
+#}
+<?xml version="1.0"?>
+<cfg>
+    <phycfg_xran>
+        <Api>
+            <wls_dev_name>wls0</wls_dev_name>
+        </Api>
+        <DPDK>
+            <dpdkFilePrefix>{{ gnodeb_config.phycfg_xran.dpdk.dpdkFilePrefix }}</dpdkFilePrefix>
+            <dpdkIovaMode>{{ gnodeb_config.phycfg_xran.dpdk.dpdkIovaMode }}</dpdkIovaMode>
+            <dpdkBasebandFecMode>{{ gnodeb_config.phycfg_xran.dpdk.dpdkBasebandFecMode }}</dpdkBasebandFecMode>
+            <dpdkBasebandDevice>ENV.{{ fec_env_variable }}</dpdkBasebandDevice>
+        </DPDK>
+        <Threads>
+            <systemThread>{{ gnodeb_config.phycfg_xran.threads.systemThread }}</systemThread>
+            <timerThread>{{ gnodeb_config.phycfg_xran.threads.timerThread }}</timerThread>
+            <FpgaDriverCpuInfo>{{ gnodeb_config.phycfg_xran.threads.FpgaDriverCpuInfo }}</FpgaDriverCpuInfo>
+            <FrontHaulCpuInfo>{{ gnodeb_config.phycfg_xran.threads.FrontHaulCpuInfo }}</FrontHaulCpuInfo>
+            <radioDpdkMaster>{{ gnodeb_config.phycfg_xran.threads.radioDpdkMaster }}</radioDpdkMaster>
+        </Threads>
+        <BbuPoolConfig>
+            <BbuPoolThreadDefault_0_63>{{ gnodeb_config.phycfg_xran.bbupool.BbuPoolThreadDefault_0_63 }}</BbuPoolThreadDefault_0_63>
+        </BbuPoolConfig>
+    </phycfg_xran>
+    <xrancfg_sub6>
+        <XranConfig>
+            <oRu0NumCc>{{ gnodeb_config.xrancfg_sub6.oRu0NumCc }}</oRu0NumCc>
+            <xRANThread>{{ gnodeb_config.xrancfg_sub6.xRANThread }}</xRANThread>
+            <xRANWorker>{{ gnodeb_config.xrancfg_sub6.xRANWorker }}</xRANWorker>
+            <xranPmdSleep>{{ gnodeb_config.xrancfg_sub6.xranPmdSleep }}</xranPmdSleep>
+            <MTU>{{ gnodeb_config.xrancfg_sub6.mtu }}</MTU>
+            <oRuEthLinkSpeed>{{ gnodeb_config.xrancfg_sub6.oRuEthLinkSpeed }}</oRuEthLinkSpeed>
+            <PciBusAddoRu0Vf0>{{ gnodeb_fronthaul_vf1 }}</PciBusAddoRu0Vf0>
+            <PciBusAddoRu0Vf1>{{ gnodeb_fronthaul_vf2 }}</PciBusAddoRu0Vf1>
+            <oRuRem0Mac0>{{ gnodeb_config.xrancfg_sub6.oRuRem0Mac }}</oRuRem0Mac0>
+            <oRuRem0Mac1>{{ gnodeb_config.xrancfg_sub6.oRuRem0Mac }}</oRuRem0Mac1>
+            <oRu0PrbElemDl0>{{ gnodeb_config.xrancfg_sub6.oRu0PrbElemDl0 }}</oRu0PrbElemDl0>
+            <oRu0PrbElemUl0>{{ gnodeb_config.xrancfg_sub6.oRu0PrbElemDl0 }}</oRu0PrbElemUl0>
+            <oRu0nPrbElemDl>{{ gnodeb_config.xrancfg_sub6.oRu0nPrbElemDl }}</oRu0nPrbElemDl>
+            <oRu0nPrbElemUl>{{ gnodeb_config.xrancfg_sub6.oRu0nPrbElemDl }}</oRu0nPrbElemUl>
+            <T1a_max_cp_dl>{{ gnodeb_config.xrancfg_sub6.T1a_max_cp_dl }}</T1a_max_cp_dl>
+            <T1a_max_cp_ul>{{ gnodeb_config.xrancfg_sub6.T1a_max_cp_ul }}</T1a_max_cp_ul>
+            <T1a_max_up>{{ gnodeb_config.xrancfg_sub6.T1a_max_up }}</T1a_max_up>
+            <Ta4_max>{{ gnodeb_config.xrancfg_sub6.Ta4_max }}</Ta4_max>
+        </XranConfig>
+    </xrancfg_sub6>
+</cfg>

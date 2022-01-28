@@ -1,0 +1,90 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+- name: 'Create directory for gNodeB configs'
+  file:
+    path: '{{ gnodeb_configs_path }}'
+    state: directory
+    recurse: true
+
+- name: 'Copy gNodeB XML configuration file to the remote'
+  template:
+    src: 'config.xml.j2'
+    dest: '{{ gnodeb_configs_path }}/config.xml'
+    mode: preserve
+    backup: false
+
+- name: 'Copy gNodeB configuration script to the remote'
+  copy:
+    src: "gnodeb_config_update.py"
+    dest: "{{ gnodeb_configs_path }}"
+    mode: preserve
+
+- name: 'Copy L1 DPDK configuration script to the remote'
+  template:
+    src: 'dpdk_configuration.sh.j2'
+    dest: '{{ gnodeb_configs_path }}/dpdk_configuration.sh'
+    mode: a+x
+    backup: false
+
+- name: 'Copy CU-DU value update script to the remote'
+  template:
+    src: 'cu_du_value_update.sh.j2'
+    dest: '{{ gnodeb_configs_path }}/cu_du_value_update.sh'
+    mode: a+x
+    backup: false
+
+- name: Copy GNB config files
+  command: "kubectl cp {{ gnodeb_configs_path }}/{{ item }} {{ cera_namespace_name }}/{{ app_name }}:/root/"
+  changed_when: false
+  loop:
+    - "config.xml"
+    - "gnodeb_config_update.py"
+    - "dpdk_configuration.sh"
+    - "cu_du_value_update.sh"
+
+- name: Run config script to setup gNodeB
+  shell: >
+    kubectl exec -n {{ cera_namespace_name }} {{ app_name }} --
+    python /root/gnodeb_config_update.py
+    --config-file /root/config.xml
+    --phycfg-xran-file {{ phycfg_xran_config_path }}
+    --xrancfg-sub6-file {{ xrancfg_sub6_config_path }}
+  changed_when: false
+
+- name: Run config script to setup L1 DPDK script
+  command: kubectl exec -n {{ cera_namespace_name }} {{ app_name }} -- bash /root/dpdk_configuration.sh
+  changed_when: false
+
+- name: Update CONFD_DIR in confdrc
+  command: >
+    kubectl exec -n {{ cera_namespace_name }} {{ app_name }} -- bash -c
+    "sed -i 's+CONFD_DIR=.*+CONFD_DIR={{ gnodeb_root }}/confd-basic-7.3+' {{ gnodeb_root }}/confd-basic-7.3/confdrc"
+  changed_when: false
+
+- name: Update oam_cu.sh file
+  command: >
+    kubectl exec -n {{ cera_namespace_name }} {{ app_name }} -- bash -c
+    "sed -i 's+source.*+source {{ gnodeb_root }}/confd-basic-7.3/confdrc+' {{ cu_du_path }}/CU/bin/oam_cu.sh"
+  changed_when: false
+
+- name: Update oam_du.sh file
+  command: >
+    kubectl exec -n {{ cera_namespace_name }} {{ app_name }} -- bash -c
+    "sed -i 's+source.*+source {{ gnodeb_root }}/confd-basic-7.3/confdrc+' {{ cu_du_path }}/DU/bin/oam_du.sh"
+  changed_when: false
+
+- name: Run cu-du value update script
+  command: kubectl exec -n {{ cera_namespace_name }} {{ app_name }} -- bash /root/cu_du_value_update.sh
+  changed_when: false

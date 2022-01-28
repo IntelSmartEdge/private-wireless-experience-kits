@@ -1,0 +1,105 @@
+{#
+INTEL CONFIDENTIAL
+Copyright 2020-2021 Intel Corporation.
+This software and the related documents are Intel copyrighted materials, and your use of
+them is governed by the express license under which they were provided to you ("License").
+Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+disclose or transmit this software or the related documents without Intel's prior written permission.
+This software and the related documents are provided as is, with no express or implied warranties,
+other than those that are expressly stated in the License.
+#}
+<system_cfg>
+   <io-ports>
+       <!-- white-list the DPDK ports to be used by xFE
+       -->
+      <dpdk_ports>
+      <!-- dpdk_ports configuration should be as shown below
+           For each Port, id is mandatory,
+           1. id can be either 'all' in case when all
+           the dpdk compatible devices on system have to be selected.
+           or id can be a device name or PCI address.
+           2. Rest fields for ports are optional.
+           3. Keep only the fields which are required.
+           For example:
+           only vlan-strip-offload is required
+            <port>
+                <id>enp0s8</id>
+                <vlan-strip-offload>off</vlan-strip-offload>
+            </port>
+           4. Do not add any  field other than num-rx-queues, num-tx-queues
+           num-rx-desc, num-tx-desc and vlan-strip-offload
+           5. In case of all, if optional params are specified, they will be added
+           as default values for each port
+      -->
+        <port>
+            <id>{{ backhaul.upf_side.pf }}</id>
+            <num-rx-queues>1</num-rx-queues>
+            <num-tx-queues>1</num-tx-queues>
+            <num-rx-desc>1024</num-rx-desc>
+            <num-tx-desc>1024</num-tx-desc>
+            <vlan-strip-offload>off</vlan-strip-offload>
+        </port>
+        <port>
+            <id>{{ upf_data.pf }}</id>
+            <num-rx-queues>1</num-rx-queues>
+            <num-tx-queues>1</num-tx-queues>
+            <num-rx-desc>1024</num-rx-desc>
+            <num-tx-desc>1024</num-tx-desc>
+            <vlan-strip-offload>off</vlan-strip-offload>
+        </port>
+      </dpdk_ports>
+   </io-ports>
+    <!-- name of control interface to be enabled in xFE
+         Supported Values:
+            P4-runtime
+            THRIFT
+            OF
+            MGMT
+    -->
+    <control_if> MGMT </control_if>
+
+    <!-- tcp connect setting, when enabled, tcp connect health monitoring
+         will be available
+    Supported values:
+        enabled
+        disabled  [default]
+    -->
+    <tcp-connect>
+       <monitoring> disabled  </monitoring>
+       <local-port> 1024 </local-port>
+       <ipv4>
+          <source-ip> 2.2.2.1/24 </source-ip>
+          <dest-ip> 2.2.2.2 </dest-ip>
+          <mac> 08:00:27:84:7a:2d </mac>
+       </ipv4>
+       <ipv6>
+          <source-ip> 1000::a0/64 </source-ip>
+          <dest-ip> 1000::a1 </dest-ip>
+          <mac> 08:00:27:84:7a:2d </mac>
+       </ipv6>
+    </tcp-connect>
+
+    <!-- when enabled, FlowEngine Management plane will provide option to query
+    ip-services status and SELs from BMC (provided underlying platform has
+    necessary support present)
+    Supported values:
+        enabled
+        disabled  [default]
+    -->
+    <platform-svc> disabled </platform-svc>
+
+    <stats>
+        <!-- Implicit flow, table and action bucket stats configuration.
+             These stats can be enabled or disabled from here.
+        -->
+        <flow-stats>enabled</flow-stats>
+        <table-stats>enabled</table-stats>
+        <action-bucket>disabled</action-bucket>
+        <member-stats>disabled</member-stats>
+        <group-stats>disabled</group-stats>
+    </stats>
+    <!-- Run the /opt/fesw/sdk/bin/socket-mem-calculator.exe utility
+            for calculating the
+            below value for lpm match tables(in MB) -->
+    <socket-mem>256</socket-mem>
+</system_cfg>

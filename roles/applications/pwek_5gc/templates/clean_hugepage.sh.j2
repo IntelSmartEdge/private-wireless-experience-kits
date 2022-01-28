@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+function get_pod_id (){
+  podid=`docker ps -f name=$1 --format "{{ '{{' }}.Names{{ '}}' }}" | head -n 1 | grep -i -E -o "([0-9a-f]{4,}-){4}[0-9a-f]{12}"`
+  echo $podid
+}
+
+
+cat /proc/meminfo |grep -i HugePage
+for i in /sys/devices/system/node/node*; do echo $i; cat $i/meminfo |grep Huge; done
+
+# How do I check for hugepages usage and what is using it?
+# https://access.redhat.com/solutions/320303
+
+# https://unix.stackexchange.com/questions/167451/how-to-monitor-use-of-huge-pages-per-process
+numa_maps=`grep huge /proc/*/numa_maps`
+for i in `echo $numa_maps | cut -d ":" -f 1| uniq`; do 
+  # echo "${i%/*}/cmdline"
+  pid="${i%/*}"
+  pid="${pid##*/}"
+  # https://stackoverflow.com/questions/3790895/linux-bash-using-ps-o-to-get-process-by-specific-name
+  ps -p $pid
+done
+# https://sites.google.com/site/nandydandyoracle/robin-systems/configuring-hugepages-for-oracle
+# https://www.jianshu.com/p/8203457a11cc
+grep '^VmFlags:.* ht' /proc/[0-9]*/smaps
+
+# https://www.thegeekdiary.com/rhelcentos-67-how-to-caculate-the-size-of-hugepage-used-by-a-specified-processapplication/
+# https://www.golinuxcloud.com/check-transparent-hugepage-usage-per-process/
+# for i in /proc/*/smaps; do
+#   if [[ $(grep '^AnonHugePages' $i |grep -v "0 kB$") ]] ; then
+#     echo -ne "$i procees maybe running THP mode if you are using THP mode in kernel:\n"
+#   fi 
+# done
+
+# https://www.ludovicocaldara.net/dba/oracle-hugepages-usage-linux/
+ipcs -m | awk 'BEGIN{a=0} {a+=$5} END{print a}'
+
+if [ -n "$pid" ]; then
+grep -e AnonHugePages  /proc/$pid/smaps | awk  '{ if($2>4) print $0} ' |  awk -F "/"  '{print $0; system("ps -fp $pid -o comm=")} '
+fi
+
+# umount -v hugetlbfs /var/lib/kubelet/pods/*/volumes/kubernetes.io~empty-dir/hugepage
+ls /var/lib/kubelet/pods/*/volumes/kubernetes.io~empty-dir/hugepage
+for i in /sys/fs/cgroup/hugetlb/kubepods/*/*/hugetlb.1GB.usage_in_bytes; do
+  num=`cat $i`
+  if [ "$num" -ge "1024" ]; then
+    pid=`echo $i |grep -i -E -o "/pod([0-9a-f]{4,}-){4}[0-9a-f]{12}"`
+    pid=${pid##/pod}
+    echo "--------------------"
+    docker ps -f name=$pid --format "{{ '{{' }}.Names{{ '}}' }}"
+    echo $((num/1024/1024/1024))G are in use.
+  fi
+done
+
+
+if [ -z "$1" ]; then
+  echo "\$1: delete which components hugepage:"
+  echo "  -a delete both bbu and 5gc/upf hugepage."
+  echo "  -b only delete bbu hugepage."
+  echo "  -c only delete 5gc/upf hugepage."
+  echo "  -i system hugepage info"
+  exit
+fi
+if [ "$1" = "-i" ]; then
+  exit
+fi
+if [ "$1" = "-a" ]; then
+  rmbbu=yes
+  rmupf=yes
+fi
+if [ "$1" = "-b" ]; then
+  rmbbu=yes
+  rmupf=no
+fi
+if [ "$1" = "-c" ]; then
+  rmbbu=no
+  rmupf=yes
+fi
+
+if [ "$rmbbu" = yes ]; then
+echo "-------------------"
+name=5gnr-bbu-l1du
+docker ps -f name=$name --format "{{ '{{' }}.Names{{ '}}' }}"
+podid=$(get_pod_id $name)
+echo "list hupage info for $name:"
+ls /var/lib/kubelet/pods/$podid/volumes/kubernetes.io~empty-dir/hugepage
+umount -v hugetlbfs /var/lib/kubelet/pods/$podid/volumes/kubernetes.io~empty-dir/hugepage
+echo 
+
+echo "-------------------"
+name=5gnr-bbu-l2cu
+docker ps -f name=$name --format "{{ '{{' }}.Names{{ '}}' }}"
+podid=$(get_pod_id $name)
+echo "list hupage info for $name:"
+ls /var/lib/kubelet/pods/$podid/volumes/kubernetes.io~empty-dir/hugepage
+umount -v hugetlbfs /var/lib/kubelet/pods/$podid/volumes/kubernetes.io~empty-dir/hugepage
+echo 
+fi
+
+if [ "$rmupf" = yes ]; then
+echo "-------------------"
+name=cn-upf
+docker ps -f name=$name --format "{{ '{{' }}.Names{{ '}}' }}"
+podid=$(get_pod_id $name)
+echo "list hupage info for $name:"
+ls /var/lib/kubelet/pods/$podid/volumes/kubernetes.io~empty-dir/hugepage
+umount -v hugetlbfs /var/lib/kubelet/pods/$podid/volumes/kubernetes.io~empty-dir/hugepage
+echo
+fi
+
+cat /proc/meminfo | grep HugePages_Free
+cat /proc/meminfo | grep HugePages_Free | awk -F : -v hsize=${HG1G_SIZE:-48} '{if(int($2)>=hsize) print "hugepage large than " hsize ", cheers"; else print "hugepage little than " hsize ", still need release"}'

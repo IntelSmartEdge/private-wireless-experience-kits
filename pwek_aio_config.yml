@@ -1,0 +1,105 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2021 Intel Corporation
+
+# Pass github.com username and generated personal token for that user
+# (providing only token is not enough, since ESP requires username as well).
+# It is assumed that both repositories (ESP and profiles) are on the same github site,
+# accessible with the same personal token belonging to same user.
+github:
+  user: ''
+  token: ''
+
+esp:
+  url: https://github.com/intel/Edge-Software-Provisioner
+  branch: v2.0.3
+  dest_dir: './esp'
+
+dnsmasq:
+  # enable only if on isolated network, with no other DHCP servers running!
+  # (dnsmasq is required for PXE boot only)
+  enabled: false
+  # Following values are mapped 1:1 to ESP config (if left empty, it will be deduced by the ESP
+  # from current network settings)
+  dhcp_range_minimum: ''      # e.g. 192.168.1.100
+  dhcp_range_maximum: ''      # e.g. 192.168.1.250
+  host_ip: ''                 # e.g. 192.168.1.2
+  network_broadcast_ip: ''    # e.g. 192.168.1.255
+  network_gateway_ip: ''      # e.g. 192.168.1.1
+  # if behind proxy, primary dns should be set to gateway ip!
+  network_dns_primary: ''     # e.g. 8.8.4.4
+  network_dns_secondary: ''   # e.g. 8.8.8.8
+
+docker:
+  # put your local docker mirrors addresses here (to prevent issue with docker limit rate during deploy)
+  registry_mirrors: []
+  # dockerhub credentials - applies only to live os stage
+  dockerhub:
+    username: ""
+    password: ""
+
+# ntp server address used during deploy
+ntp_server: ''
+
+# list of profiles (at least one profile should be defined)
+profiles:
+  - name: Smart_Edge_Open_Private_Wireless_Experience_Kit
+    url: https://github.com/smart-edge-open/profiles-centos.git
+    branch: smart-edge-open-22.01
+    scenario: multi-node       # possible scenarios: multi-node only
+    experience_kit:
+      url: https://github.com/smart-edge-open/private-wireless-experience-kits.git
+      branch: smart-edge-open-22.01
+      deployment: pwek-all-in-one
+    controlplane_mac: ''
+    #We do not support "root" account here
+    account:
+      username: smartedge-open
+      password: smartedge-open
+
+    # to further customize ansible configuration for each group and each host,
+    # put that config in a form of YAML syntax, under desired group/host section below.
+    group_vars:
+      groups:
+        all:
+          git_repo_token: ""
+          proxy_env:
+            # Proxy URLs to be used for HTTP, HTTPS and FTP
+            http_proxy: ""
+            https_proxy: ""
+            ftp_proxy: ""
+            # No proxy setting contains addresses and networks that should not be accessed using proxy (e.g. local network, Kubernetes CNI networks)
+            no_proxy: ""
+
+          openness_enable: false
+          dns_enable: false
+          e810_driver_enable: true
+          pwek_offline_package_path: "/opt/pwek_offline_files/"
+        controller_group:
+        edgenode_group:
+          ptp_sync_enable: true
+    host_vars:
+      hosts:
+        controller:
+        node01:
+    sideload:
+      # If extra file has to be used in the process of deployment and copied to provisioned machine, point to it here.
+      # It should be list of items eg.
+      # - file_path: "/root/syscfg_package.zip"
+      #   dest_path: "/opt/seo/biosfw/"
+      - file_path: "/opt/pwek_offline_files"
+        dest_path: "../pwek_offline_files"
+    # Define additional inventory groups where hosts belong to.
+    # Possible host names: controller, node01
+    # Note: some Experience Kits require to provide at least a group name with no hosts.
+    extra_inventory_groups:
+      ptp_master:
+      ptp_slave_group:
+        node01:
+
+usb_images:
+  build: true             # change to false to disable any USB image building
+  bios: true              # enable building image in legacy bios format
+  efi: true               # enable building image in uefi format
+  all_in_one: false       # if false, for each defined profile a separate image will be created
+                          # if true, single image will be created, containing selection of all defined profiles
+  output_path: './out'    # dir where built images will be copied to

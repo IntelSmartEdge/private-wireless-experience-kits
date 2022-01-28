@@ -1,0 +1,168 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+# NOTE make sure install lsof by "yum install lsof -y"
+
+CONF="{{ flexran_prebuild_e2e_path }}/rsys_cu/config/sys_config.txt"
+USER={{ USER }}
+REMOTE={{ REMOTE }}
+# https://stackoverflow.com/questions/64006641/how-to-get-all-kubernetes-pod-ip-in-each-pods
+# kubectl get pods -l app.kubernetes.io/name=amf -o=jsonpath="{range .items[*]}{.status.podIP}{','}{end}"
+
+# $1 condition, $2 pattern, $3 new value, $4 file name
+function sed_nextline_after_match(){
+# CONDITION=FAST_CRYPTO_PORT_0
+# PATTERN=PCI_ADDRESS.*
+# VALUE="PCI_ADDRESS= YES"
+CONDITION="$1"
+PATTERN="$2"
+VALUE="$3"
+sed -e  "/$CONDITION/{n;s/$PATTERN/$VALUE/}" $4
+}
+# sed_nextline_after_match "FAST_CRYPTO_PORT_0" "PCI_ADDRESS.*" "PCI_ADDRESS= YES" sys_config.txt
+
+# get_iommu_group 0000:3f:01.4
+function get_iommu_group(){
+  gp=`ls /sys/bus/pci/devices/$1/iommu_group -l`
+  echo ${gp##*/}
+}
+
+# lsof_pci_vfio 0000:3f:01.4
+function lsof_pci_vfio(){
+ gp=`get_iommu_group $1`
+ lsof /dev/vfio/$gp
+}
+
+# get_pci_driver 0000:3f:01.4
+function get_pci_driver(){
+  dr=`ls /sys/bus/pci/devices/$1/driver -l`
+  echo ${dr##*/}
+}
+
+# cu
+label="app=flexran-5gnr-bbu-l2cu"
+# cu_ip=`kubectl get pods -l $label -o=jsonpath="{.items[0].status.podIP}"`
+podn=`kubectl -n {{ pwek_namespace_name }} get pods -l $label -o NAME |head -n 1`
+if [ -z $1 ]; then
+  pcis=`kubectl  -n {{ pwek_namespace_name }} exec $podn -- bash -c "env |grep QAT" | awk -F"=" '{print $2}' |sort -R | head -n 2`
+else
+  pcis=`kubectl  -n {{ pwek_namespace_name }} exec $podn -- bash -c "env |grep QAT" | awk -F"=" '{print $2}' |sort -r |head -n 2`
+fi
+
+pci1=`awk '{print $1}' <<< $pcis`
+pci2=`awk '{print $2}' <<< $pcis`
+
+echo "All QAT PCI address:"
+pcis=`kubectl  -n {{ pwek_namespace_name }} exec $podn -- bash -c "env |grep QAT"`
+echo "$pcis"
+# for i in $pcis; do
+#   echo " $i"
+# done
+
+# https://www.cyberciti.biz/faq/unix-linux-execute-command-using-ssh/
+BDF=0000:3f:01.4
+# gen_vifo_user_file $BDF
+function gen_vifo_user_file() {
+cat << EOF > /tmp/vifo_user.sh
+# get_iommu_group 0000:3f:01.4
+function get_iommu_group(){
+  gp=\$(ls /sys/bus/pci/devices/\$1/iommu_group -l)
+  echo \${gp##*/}
+}
+
+# lsof_pci_vfio 0000:3f:01.4
+function lsof_pci_vfio(){
+ gp=\$(get_iommu_group \$1)
+ [[ \$gp =~ ^-?[0-9]+$ ]] || return 2
+ ls /dev/vfio/\$gp
+ ret=\$?
+ [[ \$ret -ne 0 ]] && return \$ret
+ lsof /dev/vfio/\$gp
+}
+
+# get_pci_driver 0000:3f:01.4
+function get_pci_driver(){
+  dr=\$(ls /sys/bus/pci/devices/\$1/driver -l)
+  echo \${dr##*/}
+}
+
+lsof_pci_vfio $1
+# ls /sys/bus/pci/devices/$1/iommu_group -l
+EOF
+}
+
+qat1=
+qat2=
+num=0
+
+for i in $(awk -F"=" '{print $2}' <<<  "$(shuf <<< "$pcis")"); do
+  gen_vifo_user_file $i
+  # cat /tmp/vifo_user.sh
+  tar czf - /tmp/vifo_user.sh | ssh -o "StrictHostKeyChecking no" $USER@$REMOTE tar xzf - -C /
+  # re=`ssh $USER@$REMOTE "chmod a+x /tmp/vifo_user.sh; /tmp/vifo_user.sh" | grep -E -o "/[0-9]{3}"`
+  re=`ssh $USER@$REMOTE "chmod a+x /tmp/vifo_user.sh; /tmp/vifo_user.sh" 2>&1`
+  ret=$?
+  if [ -z "$re" ] & [ "$ret" = "1" ]; then
+    # num=$((num + 1 ))
+    ((num+=1)) 
+    eval "qat$num=$i"
+    if [ "$num" -ge "2" ]; then
+      break
+    fi
+  fi
+done
+echo "Find 2 QAT not in used: $qat1 and $qat2"
+
+tmp=${QAT1:-$qat1}
+pci1=${tmp:-$pci1}
+
+tmp=${QAT2:-$qat2}
+pci2=${tmp:-$pci2}
+echo "Find 2 QAT PCI address: $pci1, $pci2"
+
+# https://www.cyberciti.biz/faq/unix-linux-execute-command-using-ssh/
+cat << EOF > /tmp/cu_config_qat.sh
+function sed_nextline_after_match ()
+{
+  sed -i -e  "/\$1/{n;s/\$2/\$3/}" \$4
+}
+
+CONF="$CONF"
+# CONF=/tmp/sys_config.txt
+
+CONDITION=FAST_CRYPTO_PORT_0
+PATTERN=PCI_ADDRESS.*
+VALUE="PCI_ADDRESS= $pci1"
+# Second time currence, set CU IP
+sed_nextline_after_match \$CONDITION \$PATTERN "\$VALUE" \$CONF
+
+CONDITION=FAST_CRYPTO_PORT_1
+PATTERN=PCI_ADDRESS.*
+VALUE="PCI_ADDRESS= $pci2"
+
+# Third time currence, set amf IP
+sed_nextline_after_match \$CONDITION \$PATTERN "\$VALUE" \$CONF
+# adf_ctl status
+EOF
+
+cat /tmp/cu_config_qat.sh
+
+scp  -o "StrictHostKeyChecking no" /tmp/cu_config_qat.sh $USER@$REMOTE:/tmp/cu_config_qat.sh
+
+# https://superuser.com/questions/395356/scp-doesnt-work-but-ssh-does
+# rsync -av --delete -e "ssh" /tmp/cu_config_qat.sh ${REMOTE}:/tmp/cu_config_qat.sh
+
+# https://unix.stackexchange.com/questions/106480/how-to-copy-files-from-one-machine-to-another-using-ssh/106482
+tar czf - /tmp/cu_config_qat.sh | ssh -o "StrictHostKeyChecking no" $USER@$REMOTE tar xzf - -C /
+ssh $USER@$REMOTE "chmod a+x /tmp/cu_config_qat.sh; /tmp/cu_config_qat.sh"

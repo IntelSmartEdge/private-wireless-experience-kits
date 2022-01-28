@@ -1,0 +1,278 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+# SRIOV_DP_CM=sriov-release-sriovdp-config
+SRIOV_DP_CM=${SRIOV_DP_CM:-sriov-release-sriovdp-config}
+VTD_EN=`cat /proc/cmdline |grep -o 'intel_iommu[^ ]*'`
+#if [ $? -ne 0 ] || [ "${VTD_EN#*=}" != "on" ] ; then
+#  echo "Please set 'intel_iommu=on' in kernel boot parameters"
+#  exit 1
+#fi
+ls /sys/kernel/iommu_groups/0/devices/0000:00:00.0 > /dev/null
+if [ $? -ne 0 ] ; then
+  echo "ERROR: 'VT-D' not enable, Please enable 'VT-D' in BIOS/UEFI"
+  exit 1
+fi
+
+echo "Show network interfaces by:"
+echo "  nmcli -p dev"
+echo "example:"
+echo "  "FRONTHAUL=eth0 MIDDLEHAUL_F1_DU=eth1 MIDDLEHAUL_F1_CU=eth2 BACKHAUL_N3=eth3 $0
+echo ""
+echo "Toplogy:"
+echo "  RRU <--Fronthaul--> DU <-- Middlehaul F1 --> CU <-- Backhaul N3 --> 5GC"
+
+# https://stackoverflow.com/questions/9893667/is-there-a-way-to-write-a-bash-function-which-aborts-the-whole-execution-no-mat
+trap "exit 1" TERM
+export TOP_PID=$$
+
+DPDK_P=`ls {{ pwek_icc }}/kmod -d |tail -n 1`
+DPDK_P=${DPDK_P%/*/*}
+
+FRONTHAUL_DRIVERS='"vfio-pci"'
+F1_DU_DRIVERS='"vfio-pci"'
+F1_CU_DRIVERS='"vfio-pci"'
+N3_DRIVERS='"vfio-pci"'
+
+FRONTHAUL_IF_NUM={{ fronthaul_du_side_vf_num }}
+F1_DU_IF_NUM={{ midhaul_du_side_vf_num }}
+F1_CU_IF_NUM={{ midhaul_cu_side_vf_num }}
+N3_NUM={{ backhaul_cu_side_vf_num }}
+
+FRONTHAUL={{ fronthaul_du_side_pf }}
+MIDDLEHAUL_F1_DU={{ midhaul_du_side_pf }}
+MIDDLEHAUL_F1_CU={{ midhaul_cu_side_pf }}
+BACKHAUL_N3={{ backhaul_cu_side_pf }}
+
+
+FRONTHAUL_IF_ID="ERROR"
+F1_DU_IF_ID="ERROR"
+F1_CU_IF_ID="ERROR"
+N3_ID="ERROR"
+
+
+function net_exist(){
+  ls /sys/class/net/${1}/device -l
+  if [ $? -ne 0 ]; then
+    exit 1
+  fi
+}
+
+echo ${FRONTHAUL-"ERROR: Please input Fronthaul value, FRONTHAUL"}
+FRONTHAUL=${FRONTHAUL-"ERROR"}
+net_exist ${FRONTHAUL}
+echo ${MIDDLEHAUL_F1_DU-"ERROR: Please input Middlehaul F1 on DU side, MIDDLEHAUL_F1_DU."}
+MIDDLEHAUL_F1_DU=${MIDDLEHAUL_F1_DU-"ERROR"}
+net_exist ${MIDDLEHAUL_F1_DU}
+echo ${MIDDLEHAUL_F1_CU-"ERROR: Please input Middlehaul F1 on CU side, MIDDLEHAUL_F1_CU."}
+MIDDLEHAUL_F1_CU=${MIDDLEHAUL_F1_CU-"ERROR"}
+net_exist ${MIDDLEHAUL_F1_CU}
+echo ${BACKHAUL_N3-"ERROR: Please input N3 Backhaul, BACKHAUL_N3."}
+BACKHAUL_N3=${BACKHAUL_N3-"ERROR"}
+net_exist ${BACKHAUL_N3}
+
+# declare -A 5G_IFS=(FRONTHAUL MIDDLEHAUL_F1_DU MIDDLEHAUL_F1_CU BACKHAUL_N3)
+# 5G_IFS
+# 5G_IFS[0]=FRONTHAUL
+# 5G_IFS[1]=MIDDLEHAUL_F1_DU
+# 5G_IFS[2]=MIDDLEHAUL_F1_CU
+# 5G_IFS[3]=BACKHAUL_N3
+
+
+function is_pf(){
+  ls /sys/bus/pci/devices/0000:${1}/sriov_totalvfs 2>/dev/null
+  if [ $? -ne 0 ]; then
+    exit 1
+  fi
+}
+
+function set_vf_num(){
+  num=`cat /sys/bus/pci/devices/0000:${2}/sriov_numvfs`
+  [[ $num -gt 0 ]] && return 0
+  
+  echo 0 > /sys/bus/pci/devices/0000:${2}/sriov_numvfs
+  echo $1 > /sys/bus/pci/devices/0000:${2}/sriov_numvfs
+  if [ $? -ne 0 ]; then
+    echo "Set sriov_numvfs: $1"
+    echo "sriov_totalvfs is: "`cat /sys/bus/pci/devices/0000:${2}/sriov_totalvfs`
+    exit 1
+  fi
+  ls /sys/bus/pci/devices/0000:${2}/virtfn* -l
+}
+
+function get_vf_id(){
+  VF_BDF=`ls /sys/bus/pci/devices/0000:${1}/virtfn0 -l | awk -F'/' '{print $8}'`
+  ID=`lspci -nnv |grep ^${VF_BDF#*:} | grep -E -o '[0-9a-f]{4}:[0-9a-f]{4}'`
+  echo $ID
+}
+
+function get_vf_drivers(){
+  DRIVER=`ls /sys/bus/pci/devices/0000:${1}/virtfn0/driver/module/drivers`
+  if [ $? -ne 0 ]; then
+    echo "ERROR: failed to get driver by: "
+    echo "/sys/bus/pci/devices/0000:${1}/virtfn0/driver/module/drivers"
+    kill -s TERM $TOP_PID
+  fi
+  DRIVER=${DRIVER#*:}
+  DRIVERS="\"$DRIVER\", \"vfio-pci\""
+  ALIAS=`modprobe -c |grep ^alias.*$DRIVER |grep -v ":"| uniq | awk '{print $2 $3}'`
+  ALIAS=${ALIAS/$DRIVER/}
+  [[ ! -z "$ALIAS" ]] && DRIVERS="\"$ALIAS\", $DRIVERS"
+  echo $DRIVERS
+}
+
+for i in `ls /sys/class/net/*/device -l | awk -F'/' '{print $5","$9}'`; do
+  BDF=${i#*:}
+  if [[ ! $BDF =~ ^[0-9a-f]{2}:[0-9a-f]{2}.[0-9a-f]$ ]] ; then
+     continue
+  fi
+
+  # if [[ ! " ${5G_IFS[@]} " =~ " ${i%,*} " ]]; then
+  #   # whatever you want to do when array doesn't contain value
+  #   continue
+  # fi
+  case ${i%,*} in
+    ${FRONTHAUL})
+        is_pf $BDF
+        ;;
+    ${MIDDLEHAUL_F1_DU})
+        is_pf $BDF
+        ;;
+    ${MIDDLEHAUL_F1_CU})
+        is_pf $BDF
+        ;;
+    ${BACKHAUL_N3})
+        is_pf $BDF
+        ;;
+    *)
+        continue
+        # printf "\n${i%,*} \n  $BDF, $ID, $DRIVER"
+        ;;
+  esac
+  echo ${i%,*}
+
+  PF_DRIVER=`ls /sys/bus/pci/devices/0000:${BDF}/driver/module/drivers |cut -d ":" -f 2`
+  echo "${i%,*} physical driver is: $PF_DRIVER"
+  PF_ID=`lspci -nnv |grep ^$BDF | grep -E -o '[0-9a-f]{4}:[0-9a-f]{4}'`
+
+  case ${i%,*} in
+    ${FRONTHAUL})
+        echo $ALIAS, $DRIVER
+        set_vf_num $FRONTHAUL_IF_NUM $BDF
+        FRONTHAUL_DRIVERS=$(get_vf_drivers $BDF)
+        FRONTHAUL_IF_ID=$(get_vf_id $BDF)
+        ;;
+    ${MIDDLEHAUL_F1_DU})
+        echo $ALIAS, $DRIVER
+        echo $F1_DU_IF_NUM
+        set_vf_num $F1_DU_IF_NUM $BDF
+        F1_DU_DRIVERS=$(get_vf_drivers $BDF)
+        F1_DU_IF_ID=$(get_vf_id $BDF)
+        ;;
+    ${MIDDLEHAUL_F1_CU})
+        echo $F1_CU_IF_NUM
+        set_vf_num $F1_CU_IF_NUM $BDF
+        F1_CU_DRIVERS=$(get_vf_drivers $BDF)
+        F1_CU_IF_ID=$(get_vf_id $BDF)
+        ;;
+    ${BACKHAUL_N3})
+        set_vf_num $N3_NUM $BDF
+        N3_DRIVERS=$(get_vf_drivers $BDF)
+        N3_ID=$(get_vf_id $BDF)
+        ;;
+    *)
+        # printf "\n${i%,*} \n  $BDF, $ID, $DRIVER"
+        ;;
+  esac
+done
+
+echo FEC device id: ${FEC_DEVICEID-"0d90"}
+echo $FRONTHAUL_DRIVERS
+echo $F1_DU_DRIVERS
+echo $F1_CU_DRIVERS
+echo $N3_DRIVERS
+
+cat | tee 5g_cm.yaml << EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${SRIOV_DP_CM}
+  namespace: kube-system
+data:
+  config.json: |
+    {
+        "resourceList": [{
+                "resourceName": "intel_sriov_1G_CU",
+                "selectors": {
+                    "vendors": ["${F1_CU_IF_ID%:*}"],
+                    "devices": ["${F1_CU_IF_ID#*:}"],
+                    "drivers": [$F1_CU_DRIVERS],
+                    "pfNames": ["$MIDDLEHAUL_F1_CU"]
+                }
+            },
+            {
+                "resourceName": "intel_sriov_1G_DU",
+                "selectors": {
+                    "vendors": ["${F1_DU_IF_ID%:*}"],
+                    "devices": ["${F1_DU_IF_ID#*:}"],
+                    "drivers": [$F1_DU_DRIVERS],
+                    "pfNames": ["$MIDDLEHAUL_F1_DU"]
+                }
+            },
+            {
+                "resourceName": "intel_sriov_10G",
+                "isRdma": true,
+                "selectors": {
+                    "vendors": ["${N3_ID%:*}"],
+                    "devices": ["${N3_ID#*:}"],
+                    "drivers": [$N3_DRIVERS],
+                    "pfNames": ["$BACKHAUL_N3"]
+                }
+            },
+            {
+                "resourceName": "intel_sriov_40G",
+                "isRdma": true,
+                "selectors": {
+                    "vendors": ["${FRONTHAUL_IF_ID%:*}"],
+                    "devices": ["${FRONTHAUL_IF_ID#*:}"],
+                    "drivers": [$FRONTHAUL_DRIVERS],
+                    "pfNames": ["$FRONTHAUL"]
+                }
+            },
+            {
+                "resourceName": "intel_fpga",
+                "deviceType": "accelerator",
+                "selectors": {
+                    "vendors": ["8086"],
+                    "devices": ["0d90"]
+                }
+            }
+        ]
+    }
+EOF
+
+DPDK_P=`ls {{ pwek_icc }} -d |tail -n 1`
+DPDK_P=${DPDK_P%/*}
+
+BDF=`readlink /sys/class/net/$FRONTHAUL/device |awk -F '/' '{print $4}'`
+FRONTHAUL_VFBDF=`readlink /sys/bus/pci/devices/${BDF}/virtfn* |head -n $FRONTHAUL_IF_NUM |awk -F "/" '{print $2}'`
+
+echo  "FRONTHAUL_VFBDF======"
+echo $DPDK_P
+$DPDK_P/usertools/dpdk-devbind.py -b vfio-pci $FRONTHAUL_VFBDF
+
+ls /sys/bus/pci/drivers/vfio-pci/
+for i in `echo "$FRONTHAUL_VFBDF"`; do ls /sys/bus/pci/devices/${i}/driver/module/drivers; done
+
+exit 0

@@ -1,0 +1,291 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+# L1 CPUs
+L1PATH={{ L1PATH }}
+SUB6_CONF={{ SUB6_CONF }}
+PHY_CONF={{ PHY_CONF }}
+XRAN_THREAD={{ dedicated_cpu_phy_l1_xran_polling_thread }}
+XRAN_WORKER={{ dedicated_cpu_phy_l1_xran_packet_processing_thread }}
+SYSTEMTHREAD={{ dedicated_cpu_phy_l1_system_thread }}
+TIMERTHREAD={{ dedicated_cpu_phy_l1_timer_thread }}
+FRONTHAUL_THREAD={{ dedicated_cpu_phy_l1_LDPC_thread }}
+RADIO_DPDK_MASTER={{ dedicated_cpu_phy_l1_radio_DPDK_master_thread }}
+BBUPOOL_WORKER={{ dedicated_cpu_phy_l1_BBUpool_worker_thread }}
+
+# CU CPUS
+CUPATH={{ CUPATH }}
+CU_HOUS_EKEEPING={{ dedicated_cpu_cu_house_keeping }}
+CU_CONTROL_PLANE={{ dedicated_cpu_cu_control_plane_common }}
+
+# UDP_RX_THREAD - Applicable for FAST_PKT_RX_THREADS only
+CU_UP_UDP_RX_THREAD={{ dedicated_cpu_cu_user_plane_udp_rx_thread }}
+CU_UP_UDP_RX_DL_THREAD={{ dedicated_cpu_cu_user_plane_udp_rx_dl_thread }}
+CU_UP_UDP_RX_UL_THREAD={{ dedicated_cpu_cu_user_plane_udp_rx_ul_thread }}
+CU_UP_DL_THREAD={{ dedicated_cpu_cu_user_plane_dl_thread }}
+CU_UP_UL_THREAD={{ dedicated_cpu_cu_user_plane_ul_thread }}
+
+# Below two parameters applicable if flag SEPARATE_UDP_TX_THREAD is enabled, currenlty not supported
+CU_UP_UDP_TX_DL_THREAD={{ dedicated_cpu_cu_user_plane_udp_tx_dl_thread }}
+CU_UP_UDP_TX_UL_THREAD={{ dedicated_cpu_cu_user_plane_udp_tx_ul_thread }}
+CU_DPDK_CORE_0={{ dedicated_cpu_cu_dpdk_pool_work0 }}
+
+# FAST_CRYPTO_RXFAST_CRYPTO_RX
+CU_FAST_CRYPTO_RXFAST_CRYPTO_RX={{ dedicated_cpu_cu_fast_crypto_rx }}
+
+# DU CPUS
+DUPATH={{ DUPATH }}
+DU_HOUS_EKEEPING={{ dedicated_cpu_du_sys_house_keeping }}
+DU_LOWER_CL={{ dedicated_cpu_du_sys_lower_cl }}
+DU_CL_RECV={{ dedicated_cpu_du_sys_cl_recv }}
+DU_UDP_RX={{ dedicated_cpu_du_sys_udp_rx }}
+
+# NUM_THREAD_POOL         = 1  # need to set it
+POOL1_WKR={{ dedicated_cpu_du_thread_pool_wkr0 }}
+POOL2_WKR={{ dedicated_cpu_du_thread_pool_wkr0 }}
+QCOM_TTI_RECV={{ dedicated_cpu_du_qcom_tti_recv }}
+QCOM_L1_SEND={{ dedicated_cpu_du_qcom_l1_send }}
+
+# ----
+# NUM_LCORE               = 4  # need to set it
+DPDK_CORE_0={{ dedicated_cpu_du_dpdk_pool_work0 }}
+DPDK_CORE_1={{ dedicated_cpu_du_dpdk_pool_work1 }}
+DPDK_CORE_2={{ dedicated_cpu_du_dpdk_pool_work2 }}
+DPDK_CORE_3={{ dedicated_cpu_du_dpdk_pool_work3 }}
+
+# SUB6_CONF=xrancfg_sub6.xml
+echo $SUB6_CONF
+# PHY_CONF=phycfg_xran.xml
+echo $PHY_CONF
+
+# CUPATH=cu_sys_config.txt
+echo $CUPATH
+# DUPATH=du_sys_config.txt
+echo $DUPATH
+
+function get_cpu_list(){
+cpus=$1
+cpu_l=""
+for i in `echo $cpus | tr , " "`; do
+  if [[ $i =~ "-" ]]; then
+    bg=${i%%-*}
+    en=${i##*-}
+    for j in $(seq $bg $en);do
+      if [ -z "$cpu_l" ]; then
+        cpu_l=$j
+      else
+        cpu_l="$cpu_l $j"
+      fi
+    done
+  else
+    if [ -z "$cpu_l" ]; then
+        cpu_l=$i
+      else
+        cpu_l="$cpu_l $i"
+    fi
+  fi
+done
+echo $cpu_l
+}
+
+function list2bits(){
+  order=`tr " " "\n" <<< "$1" | sort -n -r | tr "\n" " "`
+  max=`cut -d" " -f1 <<< "$order"`
+  len=$((max + 1))
+  res=`printf '0%.0s' $(seq 1 $len)`
+  # echo "bin=$res"
+  for i in $order; do
+    idx=$((len - i))
+    # echo "iri $dx"
+    res=${res:0:idx-1}1${res:idx}
+    # echo "bin=$res"
+  done
+  res=`echo "obase=16;ibase=2;$res" | bc`
+  res=${res,,}
+  echo 0x$res
+}
+
+function h64bits(){
+  d=${1#0x}
+  len=`wc -c <<< $d`
+  len=$((len-1))
+  if [ $len -gt 16 ]; then
+    l=$((len-16))
+    echo 0x${d:0:l}
+  else
+     echo 0x0
+  fi
+}
+
+function l64bits(){
+  d=${1#0x}
+  len=`wc -c <<< $d`
+  len=$((len-1))
+  if [ $len -gt 16 ]; then
+    l=$((len-16))
+    r0=${d:l:len}
+    # r=${r0##+(0)}
+    r=`sed -e "s/^0*//" <<< $r0`
+    echo 0x$r
+  else
+    echo $1
+  fi
+}
+
+
+# $1 element tag, $2 element value, $3 the n time occurrent, $4 file name
+function sub_xml_val ()
+{
+  sed -i -e ':a;N;$!ba; s/[^>]*\(<\/'"$1"'>\)/'"$2"'\1/'"$3"'' $4
+}
+
+# ----------------  L1 CPU  -----------------------
+# First time
+# XML=$L1PATH/xrancfg_sub6.xml
+XML=$SUB6_CONF
+
+# XRAN_THREAD=1
+XEL=xRANThread VAL="$XRAN_THREAD, 96, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# XRAN_WORKER=2,3,8-9
+cpus=`get_cpu_list $XRAN_WORKER`
+bits=$(list2bits "$cpus")
+XEL=xRANWorker VAL="$bits, 96, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# =============================================
+# XML=$L1PATH/phycfg_xran.xml
+XML=$PHY_CONF
+
+# SYSTEMTHREAD=5
+XEL=systemThread VAL="$SYSTEMTHREAD, 0, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# TIMERTHREAD=6
+XEL=timerThread VAL="$TIMERTHREAD, 96, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# FRONTHAUL_THREAD=7
+XEL=FpgaDriverCpuInfo VAL="$FRONTHAUL_THREAD, 96, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+XEL=FrontHaulCpuInfo VAL="$FRONTHAUL_THREAD, 96, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# RADIO_DPDK_MASTER=8
+XEL=radioDpdkMaster VAL="$RADIO_DPDK_MASTER, 99, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# BBUPOOL_WORKER=1-4
+cpus=`get_cpu_list $BBUPOOL_WORKER`
+bits=$(list2bits "$cpus")
+lbits=$(l64bits $bits)
+hbits=$(h64bits $bits)
+XEL=BbuPoolThreadDefault_0_63 VAL="$lbits" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+XEL=BbuPoolThreadDefault_64_127 VAL="$hbits" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# ----------------  DU CPUs  -----------------------
+NUM=$DU_HOUS_EKEEPING
+sed -i -e "s/\(TTI_TIMER_COREID.*= \).*/\1$NUM/" $DUPATH
+sed -i -e "s/\(OAM_RX_COREID.*= \).*/\1$NUM/" $DUPATH
+sed -i -e "s/\(LOG_READER_COREID.*= \).*/\1$NUM/" $DUPATH
+sed -i -e "s/\(CLI_AGENT_COREID.*= \).*/\1$NUM/" $DUPATH
+sed -i -e "s/\(OAM_AGENT_COREID.*= \).*/\1$NUM/" $DUPATH
+sed -i -e "s/\(SCTP_COREID.*= \).*/\1$NUM/" $DUPATH
+sed -i -e "s/\(TIMER_COREID.*= \).*/\1$NUM/" $DUPATH
+
+
+NUM=$DU_LOWER_CL
+sed -i -e "s/\(LOWER_CL_COREID.*= \).*/\1$NUM/" $DUPATH
+NUM=$DU_CL_RECV
+sed -i -e "s/\(CL_RECV_COREID.*= \).*/\1$NUM/" $DUPATH
+NUM=$DU_UDP_RX
+sed -i -e "s/\(UDP_RX_COREID.*= \).*/\1$NUM/" $DUPATH
+
+
+NUM=$POOL1_WKR
+CPUL=`get_cpu_list $NUM`
+NUM=`tr -s '[:blank:]' ',' <<<"$CPUL"`
+sed -i -e "s/\(POOL1_WKR_COREID.*= \).*/\1{$NUM}/" $DUPATH
+NUM=$POOL2_WKR
+CPUL=`get_cpu_list $NUM`
+NUM=`tr -s '[:blank:]' ',' <<<"$CPUL"`
+sed -i -e "s/\(POOL2_WKR_COREID.*= \).*/\1{$NUM}/" $DUPATH
+
+NUM=$QCOM_TTI_RECV
+sed -i -e "s/\(TTI_RECV.*= \).*/\1$NUM/" $DUPATH
+NUM=$QCOM_L1_SEND
+sed -i -e "s/\(L1_SEND.*= \).*/\1$NUM/" $DUPATH
+
+NUM=$DPDK_CORE_0
+sed -i -e "/\[CORE_0\]/{n;s/\(CORE_ID.*= \).*/\1$NUM/}" $DUPATH
+NUM=$DPDK_CORE_1
+sed -i -e "/\[CORE_1\]/{n;s/\(CORE_ID.*= \).*/\1$NUM/}" $DUPATH
+NUM=$DPDK_CORE_2
+sed -i -e "/\[CORE_2\]/{n;s/\(CORE_ID.*= \).*/\1$NUM/}" $DUPATH
+NUM=$DPDK_CORE_3
+sed -i -e "/\[CORE_3\]/{n;s/\(CORE_ID.*= \).*/\1$NUM/}" $DUPATH
+
+
+# ----------------  CU CPUs  -----------------------
+NUM=$CU_HOUS_EKEEPING
+# NUM=100
+sed -i -e "s/\(LOG_READER_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(TIMER_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+
+NUM=$CU_CONTROL_PLANE
+# NUM=100
+sed -i -e "s/\(OAM_AGENT_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(COMMON_CNTRL_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(SCTP_CNTRL_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(RM_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(SCTP_SERVER_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(UE_CNTRL_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(SCTP_NG_CLIENT_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(SCTP_XN_CLIENT_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(BEARER_CNTRL_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(SCTP_E1_CLIENT_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+sed -i -e "s/\(UDP_RX_E1_PRIME_SPLIT_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+
+NUM=$CU_UP_UDP_RX_THREAD
+# NUM=100
+sed -i -e "s/\(UDP_RX_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+NUM=$CU_UP_UDP_RX_DL_THREAD
+# NUM=100
+sed -i -e "s/\(UDP_RX_DL_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+NUM=$CU_UP_UDP_RX_UL_THREAD
+# NUM=100
+sed -i -e "s/\(UDP_RX_UL_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+NUM=$CU_UP_DL_THREAD
+# NUM=100
+sed -i -e "s/\(DL_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+NUM=$CU_UP_UL_THREAD
+# NUM=100
+sed -i -e "s/\(UL_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+NUM=$CU_UP_UDP_TX_DL_THREAD
+# NUM=100
+sed -i -e "s/\(UDP_TX_DL_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+NUM=$CU_UP_UDP_TX_UL_THREAD
+# NUM=100
+sed -i -e "s/\(UDP_TX_UL_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH
+
+NUM=$CU_DPDK_CORE_0
+# NUM=100
+sed -i -e "/\[CORE_0\]/{n;s/\(CORE_ID.*= \).*/\1$NUM/}" $CUPATH
+
+NUM=$CU_FAST_CRYPTO_RXFAST_CRYPTO_RX
+# NUM=100
+sed -i -e "s/\(FAST_CRYPTO_RX_THREAD_CORE_ID_LIST.*= \).*/\1{$NUM}/" $CUPATH

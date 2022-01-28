@@ -1,0 +1,60 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+- name: Bind vfs to dpdk
+  include_role:
+    name: infrastructure/bind_device_to_driver
+  vars:
+    - pci_address: "{{ item }}"
+    - driver: "{{ dpdk_driver_upf }}"
+  loop:
+    - "{{ n3_pci_bus_address }}"
+    - "{{ n4_n9_pci_bus_address }}"
+    - "{{ n6_pci_bus_address }}"
+
+- name: apply vfs dpdk bindings
+  include_role:
+    name: applications/common/restart_sriov_dp
+
+- name: 'Create directory for helm chart values'
+  file:
+    path: '{{ cera_charts_path }}{{ app_name }}'
+    state: directory
+    mode: a=rwx
+    recurse: true
+
+- name: 'Copy helm chart to host'
+  copy:
+    src: '{{ _edgeapps_git_repo.dest }}/network-functions/core-network/charts/upf/'
+    dest: '{{ cera_charts_path }}{{ app_name }}/'
+    mode: preserve
+    backup: false
+
+- name: 'Copy helm chart values to host'
+  template:
+    src: 'values.yaml.j2'
+    dest: '{{ cera_charts_path }}{{ app_name }}/values.yaml'
+    mode: preserve
+    backup: false
+
+- name: '{{ app_name }} deployment'
+  include_role:
+    name: applications/common/cera_harbor_registry
+  vars:
+    - name: '{{ app_name }}'
+    - tag: '{{ image_tag }}'
+    - docker_file: '{{ _edgeapps_git_repo.dest }}/network-functions/core-network/5G/UPF/'
+    - binaries: '{{ i_upf_binaries_path }}'
+    - docker_tar_image_path: '{{ i_upf_docker_image_path }}'
+    - docker_image_source: '{{ i_upf_docker_image_source }}'

@@ -1,0 +1,78 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: Create pwek dir in Edge node
+  file:
+    path: "{{ remote_pwek_gnodeb_path }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: 0775
+    recurse: yes
+  become: yes
+
+- name: Prepare gnodeb environmment
+  block:
+  - name: 'Create directory for scripts on edgenode'
+    file:
+      path: '{{ pwek_gnodeb_scripts_path }}'
+      state: directory
+      recurse: yes
+      mode: 0775
+
+  - name: 'Create directory for images on edgenode'
+    file:
+      path: '{{ pwek_gnodeb_images_path }}'
+      state: directory
+      recurse: yes
+      mode: 0775
+
+- name: Copy script files to Controller
+  template:
+    src: "{{ item }}.j2"
+    dest: "{{ pwek_gnodeb_scripts_path }}/{{ item }}"
+    mode: a+x
+  with_items:
+    - "restart_sriov_deviceplugin_cni.sh"
+    - "set_bbu_ip_config.sh"
+    - "stop_pods.sh"
+    - "deploy_cu_du.sh"
+    - "config_qat_cu_address.sh"
+    - "start_cu.sh"
+    - "start_du.sh"
+    - "start_phy.sh"
+  delegate_to: "{{ groups['controller_group'][0] }}"
+
+- name: Copy script files to Edge nodes
+  template:
+    src: "{{ item }}.j2"
+    dest: "{{ pwek_gnodeb_scripts_path }}/{{ item }}"
+    mode: a+x
+  with_items:
+    - "clean_hugepage.sh"
+    - "clean_sriov_cni.sh"
+    - "config_net_sriov_vf.sh"
+    - "cpu_pinning.sh"
+    - "set_fh_vf.sh"
+    - "du_mac_cfg_cmn.sh"
+    - "set-qat-vf-num.sh"
+    - "release_upf_int.sh"
+    - "dpdk_bind_front.sh"
+
+- name: 'Copy pwek_gnodeB configuration script to the edge_node'
+  copy:
+    src: "{{ item }}"
+    dest: "{{ pwek_gnodeb_scripts_path }}"
+    mode: a+x
+  with_items:
+    - "modify_config.sh"

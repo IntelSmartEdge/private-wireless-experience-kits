@@ -1,0 +1,105 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: include common vars
+  include_vars: ../common/defaults/main.yml
+
+- name: include Harbor Registry vars
+  include_vars: ../../../../../opendek/roles/kubernetes/harbor_registry/controlplane/defaults/main.yml
+
+- name: prepare firewall
+  include_tasks: add_firewall_rules.yml
+
+- block:
+    - name: register k8s master node name
+      set_fact:
+        k8s_master_node_name: "{{ ansible_nodename | lower }}"
+    - name: set label on master node
+      command: kubectl label nodes {{ k8s_master_node_name }} 5g-openness=true --overwrite
+
+- name: create directory for certs used by AF,NEF and cntf
+  file:
+    name: "{{ _certs_dest }}/ngc"
+    state: directory
+    mode: a=rx,u+w
+
+- name: copy genCerts.sh file
+  copy:
+    src: "{{ _git_repo_ngc_dir }}/scripts/genCerts.sh"
+    remote_src: true
+    dest: "{{ _certs_dest }}/ngc"
+    mode: a+x
+
+- name: set gateway ip
+  set_fact:
+    gateway_ip: ""
+
+- name: get istio gateway endpoints
+  block:
+  - name: get gateway ip addr
+    shell: >
+      (kubectl get po -l istio=ingressgateway -n istio-system -o jsonpath='{.items[0].status.hostIP}')
+    register: gateway_ip_out
+  - name: register ingress gateway ip addr on master node
+    set_fact:
+      gateway_ip: "{{ gateway_ip_out.stdout }}"
+  - name: get gateway port number
+    shell: >
+      (kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}')
+    register: gateway_port_out
+  - name: register port_num
+    set_fact:
+      gateway_port: "{{ gateway_port_out.stdout }}"
+  when: ne_istio_enable | default(false)
+
+- name: run script to generate cerificates
+  command: "./genCerts.sh -t DNS -h afservice nefservice cntfservice localhost -t IP -h {{ _controller_ip }} 127.0.0.1 {{ gateway_ip }}"
+  args:
+    chdir: "{{ _certs_dest }}/ngc"
+  changed_when: true
+
+- name: create temporary build directory
+  tempfile:
+    state: directory
+    suffix: build
+
+- name: create ngc namespace if needed
+  block:
+    - name: check if ngc namespace exists
+      command: kubectl get ns ngc
+      failed_when: false
+      register: get_ns_ngc
+    - name: create ngc namespace
+      command: kubectl create namespace ngc
+      when: get_ns_ngc.rc == 1
+
+## Istio task to be executed before deploying ngc pods
+- name: enable istio side car injection for ngc namespace
+  command: "kubectl label namespace {{ istio_deployment_namespace }} istio-injection=enabled --overwrite"
+  when: ne_istio_enable | default(false)
+
+- name: create ngc config maps for certs
+  block:
+    - name: remove if certs config map already exists
+      command: kubectl delete configmap certs-cm -n ngc
+      failed_when: false
+    - name: create certs config map
+      command: kubectl create configmap certs-cm --from-file={{ _certs_dest }}/ngc -n ngc
+
+- include_tasks: subtasks/bringup_oam.yml
+- include_tasks: subtasks/bringup_nef.yml
+- include_tasks: subtasks/bringup_af.yml
+- include_tasks: subtasks/bringup_cntf.yml
+
+# Istio task which are post ngc pods deployment
+- include_tasks: ngc_istio.yml

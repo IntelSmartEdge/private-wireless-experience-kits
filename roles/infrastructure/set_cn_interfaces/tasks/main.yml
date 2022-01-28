@@ -1,0 +1,53 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+- name: Get vfs pci adresses for core-network components
+  include_role:
+    name: infrastructure/get_vfs_addresses
+  vars:
+    - pfname: "{{ host_if_name_cn }}"
+
+- name: set pci bus addresses for core-network variables
+  set_fact:
+    n3_pci_bus_address: "{{ vfs_pcis[host_if_name_cn][0] }}"
+    n4_n9_pci_bus_address: "{{ vfs_pcis[host_if_name_cn][1] }}"
+    n6_pci_bus_address: "{{ vfs_pcis[host_if_name_cn][2] }}"
+
+# Required for vpp interface mapping. E.g.
+#
+# Bus info          Device     Class      Description
+# ===================================================
+# pci@0000:00:03.0  eth0       network    82540EM Gigabit Ethernet Controller
+# pci@0000:00:08.0  eth1       network    82540EM Gigabit Ethernet Controller
+# pci@0000:00:09.0  eth2       network    82540EM Gigabit Ethernet Controller
+# pci@0000:19:02.0             network    Ethernet Virtual Function 700 Series
+# pci@0000:19:02.1             network    Ethernet Virtual Function 700 Series
+#
+# vpp interface name is being directly derived from the NIC PCI address
+# Second NIC should be identified as GigabitEthernet0/8/0
+# Fourth NIC should be identified as VirtualFunctionEthernet19/2/0
+- name: set vpp specific interfaces names
+  set_fact:
+    n3_vf_interface_name: >-
+      VirtualFunctionEthernet{{ '%x' % (n3_pci_bus_address.split(':')[1]) | int(0,16) }}/{{
+      '%x' % (n3_pci_bus_address.split(':')[2].split('.')[0] | int(0,16)) }}/{{
+      n3_pci_bus_address.split(':')[2].split('.')[1] }}
+    n4_n9_vf_interface_name: >-
+      VirtualFunctionEthernet{{ '%x' % (n4_n9_pci_bus_address.split(':')[1]) | int(0,16) }}/{{
+      '%x' % (n4_n9_pci_bus_address.split(':')[2].split('.')[0] | int(0,16)) }}/{{
+      n4_n9_pci_bus_address.split(':')[2].split('.')[1] }}
+    n6_vf_interface_name: >-
+      VirtualFunctionEthernet{{ '%x' % (n6_pci_bus_address.split(':')[1]) | int(0,16) }}/{{
+      '%x' % (n6_pci_bus_address.split(':')[2].split('.')[0] | int(0,16)) }}/{{
+      n6_pci_bus_address.split(':')[2].split('.')[1] }}

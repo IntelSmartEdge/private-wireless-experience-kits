@@ -1,0 +1,103 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+# UPF N3 & N6 Manual Config
+#- name: Setting upf_side_result facts
+#  set_fact: upf_side_driver="igb_uio" upf_side_bus_info="0000:1a:00.3" upf_data_driver="igb_uio" upf_data_bus_info="0000:1a:00.0"
+
+- name: Prepare 5GC scripts
+  block:
+  - name: Create pwek dir
+    file:
+      path: "{{ remote_pwek_path }}"
+      state: directory
+      owner: "{{ ansible_user }}"
+      group: "{{ ansible_user }}"
+      mode: 0775
+      recurse: yes
+    become: yes
+
+  - name: 'Create directory for scripts'
+    file:
+      path: '{{ pwek_scripts_path }}'
+      state: directory
+      recurse: yes
+      mode: 0775
+
+  - name: transmit files to controller for 5gc applications
+    include_tasks: transmit.yml
+
+  - name: 'Copy amf helm chart values to host'
+    template:
+      src: 'amf_values.yaml.j2'
+      dest: '{{ pwek_charts_path }}{{ app_name }}/charts/amf/values.yaml'
+      backup: false
+      mode: preserve
+
+  - name: 'Copy smf helm chart values to host'
+    template:
+      src: 'smf_values.yaml.j2'
+      dest: '{{ pwek_charts_path }}{{ app_name }}/charts/smf/values.yaml'
+      backup: false
+      mode: preserve
+
+  - name: 'Copy upf helm chart values to host'
+    template:
+      src: 'upf_values.yaml.j2'
+      dest: '{{ pwek_charts_path }}{{ app_name }}/charts/upf/values.yaml'
+      backup: false
+      mode: preserve
+
+- name: Clean 5GC Resources
+  block:
+    - name: Copy clean_5gc_pod
+      template:
+        src: clean_5gc_pod.sh.j2
+        dest: "{{ pwek_scripts_path }}/clean_5gc_pod.sh"
+        mode: a+x
+
+    # - name: Release UPF Interface
+    #   shell: >
+    #     cd {{ pwek_scripts_path }} && bash release_upf_int.sh
+    #   delegate_to: "{{ groups['edgenode_group'][0] }}"
+
+- name: add exports to /etc/profile
+  lineinfile:
+    state: present
+    dest: /etc/profile
+    line: "{{ item }}"
+  become: yes
+  with_items:
+    - "export DOCKER_CLIENT_TIMEOUT=300"
+    - "export COMPOSE_HTTP_TIMEOUT=300"
+
+- name: have profile available
+  shell: >
+    source /etc/profile
+  become: yes
+  changed_when: false
+
+- name: harbor repository for 5gc
+  include_tasks: harbor.yml
+  with_together:
+    - [ 'amf', 'oamamf', 'smf', 'oamsmf', 'upf', 'oamupf' ]
+    - [ "{{ amf_version }}", "{{ oamamf_version }}", "{{ smf_version }}", "{{ oamsmf_version }}", "{{ upf_version }}", "{{ oamupf_version }}" ]
+
+- name: installaton in controller for script config_cu_qat_address.sh and lspci
+  yum:
+    state: present
+    name:
+      - tmux
+      - expect
+      - pciutils
+  become: yes

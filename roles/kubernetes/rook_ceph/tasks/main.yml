@@ -1,0 +1,171 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+- name: include urls
+  include_vars: ../defaults/main.yml
+
+- name: create directory for rook_ceph
+  file:
+       path: "{{ _rook_ceph_main_dir }}"
+       state: directory
+       mode: a=rx,u+w,g+w
+  changed_when: true
+
+- name: Create directory for yaml files
+  file:
+       path: "{{ _rook_ceph_main_dir }}/files"
+       state: directory
+       mode: a=rx,u+w,g+w
+
+- name: download all the yaml files to host
+  get_url:
+    url: "{{ item }}"
+    dest: "{{ _rook_ceph_files_dir }}"
+    force: yes
+  loop:
+  - "{{ _crds_url }}"
+  - "{{ _common_url }}"
+  - "{{ _operator_url }}"
+  - "{{ _toolbox_url }}"
+
+- name: declare an empty list to populate the raw drives present
+  set_fact:
+    raw_ssd_devices: []
+- name: populate the list
+  set_fact:
+    raw_ssd_devices: "{{ raw_ssd_devices + [item.key] }}"
+  when:
+  - item.key.startswith('sd')
+  - item.value is not search('usb-*')
+  - item.value.partitions | length == 0
+  loop: "{{ ansible_devices | dict2items }}"
+- name: print the list of ssd devices
+  debug: var=raw_ssd_devices
+- name: assign the raw drive for rook-ceph OSD
+  set_fact:
+    _rook_ceph_osd_name: "{{ raw_ssd_devices[0] }}"
+  when:
+  - (raw_ssd_devices | length) > 0
+
+- name: identify the drive to wipe out
+  block:
+    - name: find the root mountpoint
+      shell: echo $(eval $(lsblk -oMOUNTPOINT,NAME -P | grep 'MOUNTPOINT="/"'); echo $NAME)
+      register: output
+    - name: identify the drive without OS
+      set_fact:
+        drive_name: "{{ item.key }}"
+      when:
+      - item.key.startswith('sd')
+      - item.value is not search('usb-*')
+      - item.value is not search (output.stdout)
+      loop: "{{ ansible_devices | dict2items }}"
+    - name: assign the drive for OSD
+      set_fact:
+        _rook_ceph_osd_name: "{{ drive_name }}"
+  when:
+  - (raw_ssd_devices | length) == 0
+
+- name: drive identified for rook-ceph
+  debug:
+    msg: "potential drive for rook-ceph {{ _rook_ceph_osd_name }}"
+
+# find out the existing LVM on the drive. Note that Ceph eventually converts the
+# drive to lvm when it consumes the drive
+- name: identify the volume groups available in the physical volume
+  shell:
+    "set -o pipefail &&  pvs --noheadings -o vg_name,pv_name | grep $disk | awk '{ print $1}'"
+  args:
+    executable: /bin/bash
+  environment:
+    disk: "/dev/{{ _rook_ceph_osd_name }}"
+  register:
+    shell_output
+  become: yes
+  failed_when: false
+  changed_when: true
+- name: add the available volume groups to the list
+  set_fact:
+    vg_list: "{{ shell_output.stdout_lines }}"
+- name: print the populated vg_list
+  debug:
+    msg: "{{ vg_list }}"
+- name: remove the volumegroups listed
+  shell: |
+    set -o pipefail
+    yes | vgremove {{ item }}
+  become: yes
+  with_items: "{{ vg_list }}"
+  register:
+    vgremove_output
+  failed_when: false
+  changed_when: true
+- name: print the vgremove execution
+  debug: msg={{ vgremove_output }}  
+- name: tear down rook_ceph cluster
+  shell: |
+    echo $disk
+    rm -rf /var/lib/rook/*
+    sgdisk --zap-all $disk
+    dd if=/dev/zero of='$disk' bs=1M count=100 oflag=direct,dsync
+    blkdiscard $disk
+    set -o pipefail && ls /dev/mapper/ceph-* | xargs -I% -- dmsetup remove %
+    rm -rf /dev/ceph-*
+    rm -rf /dev/mapper/ceph--*
+    partprobe $disk
+  args:
+     executable: /bin/bash
+  environment:
+    disk: "/dev/{{ _rook_ceph_osd_name }}"
+  register:
+    shell_output
+  become: yes
+  failed_when: false
+  changed_when: true
+- name: print the shell output
+  debug: msg={{ shell_output }}
+
+- name: copy storageclass template to host
+  template:
+    src: storageclass.yaml.j2
+    dest: "{{ _rook_ceph_files_dir }}/storageclass.yaml"
+    mode: a=rw,u+x
+
+- name: copy cluster template to host
+  template:
+    src: cluster.yaml.j2
+    dest: "{{ _rook_ceph_files_dir }}/cluster.yaml"
+    mode: a=rw,u+x
+
+- name: apply CRD definition
+  command: kubectl apply -f "{{ _rook_ceph_files_dir }}/crds.yaml"
+  changed_when: true
+
+- name: Launch the rook common components
+  command: kubectl apply -f "{{ _rook_ceph_files_dir }}/common.yaml"
+  changed_when: true
+
+- name: Launch the rook operator with CSI support
+  command: kubectl apply -f "{{ _rook_ceph_files_dir }}/operator.yaml"
+  changed_when: true
+
+- name: Configure and launch the ceph cluster
+  command: kubectl apply -f "{{ _rook_ceph_files_dir }}/cluster.yaml"
+  changed_when: true
+
+- name: Launch the Ceph CLI utilities toolbox
+  command: kubectl apply -f "{{ _rook_ceph_files_dir }}/toolbox.yaml"
+  changed_when: true
+
+- name: Define the storage class with Ceph-CSI
+  command: kubectl apply -f "{{ _rook_ceph_files_dir }}/storageclass.yaml"
+  changed_when: true

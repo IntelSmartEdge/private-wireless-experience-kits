@@ -1,0 +1,50 @@
+{#
+INTEL CONFIDENTIAL
+Copyright 2020-2021 Intel Corporation.
+This software and the related documents are Intel copyrighted materials, and your use of
+them is governed by the express license under which they were provided to you ("License").
+Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+disclose or transmit this software or the related documents without Intel's prior written permission.
+This software and the related documents are provided as is, with no express or implied warranties,
+other than those that are expressly stated in the License.
+#}
+<?xml version="1.0" encoding="UTF-8"?>
+<hello xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+<capabilities>
+<capability>urn:ietf:params:netconf:base:1.0</capability>
+</capabilities>
+</hello>
+]]>]]>
+<?xml version="1.0" encoding="UTF-8"?>
+<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+<edit-config>
+  <target>
+    <candidate/>
+  </target>
+  <config xmlns="http://tail-f.com/ns/config/1.0">
+  <fe xmlns="http://radisys.com/ns/ccmp/fe" xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0">
+  <bridges>
+    <name>br0</name>
+    <associated-ports>
+        <physical-ports nc:operation="create">
+            <port-name>{{ backhaul.upf_side.pf }}</port-name>
+        </physical-ports>
+        <physical-ports nc:operation="create">
+            <port-name>{{ upf_data.pf }}</port-name>
+        </physical-ports>
+    </associated-ports>
+  </bridges>
+  </fe>
+  </config>
+</edit-config>
+</rpc>
+]]>]]>
+<rpc message-id="2" xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+<commit>
+</commit>
+</rpc>
+]]>]]>
+<?xml version="1.0" encoding="UTF-8"?>
+<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="2">
+<close-session/>
+</rpc>

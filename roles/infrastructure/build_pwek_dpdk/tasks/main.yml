@@ -1,0 +1,252 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2021-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+- name: Check whether the directory x86_64-native-linuxapp-icc with built dpdk is created.
+  stat:
+    path: "{{ pwek_dpdk_path }}/x86_64-native-linuxapp-icc"
+  register: pwek_dpdk_dir
+  become: yes
+  failed_when: false
+
+- name: Get installed System Studio path
+  shell: set -o pipefail && ls -dt /opt/intel/system_studio* | head -1
+  register: icc
+  become: yes
+  failed_when: false
+  changed_when: false
+
+- name: print icc result
+  debug:
+    msg: "icc.stdout ===> {{ icc.stdout }}"
+
+- name: Setting upf_side_result facts
+  set_fact: icc_dir="{{ icc.stdout }}"
+
+- name: Installing EMCO on the K8s cluster
+  block:
+    - name: "Create directories for pwek dpdk build process"
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: 0775
+        recurse: yes
+      with_items:
+        - "{{ remote_pwek_path }}"
+        - "{{ pwek_flexran_extracted }}"
+        - "/opt/intel"
+      become: yes
+
+
+    - name: Copy files from Offline Package to edge node
+      copy:
+        src: "{{ pwek_offline_package_path }}/edge_node/"
+        dest: "{{ remote_pwek_path }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: 0775
+        remote_src: false
+      become: yes
+
+    - name: Install Intel System Studio
+      block:
+      - name: Check Intel System Studio Offline Installer
+        stat:
+          path: "{{ remote_pwek_path }}/system_studio_2019_update_3_composer_edition_offline.tar.gz"
+        register: installer_stat
+        failed_when: not installer_stat.stat.exists
+
+      - name: Unarchive System Studio
+        unarchive:
+          src: "{{ remote_pwek_path }}/system_studio_2019_update_3_composer_edition_offline.tar.gz"
+          dest: "/opt/intel"
+          remote_src: yes
+        become: yes
+
+      - name: stat license
+        stat: "path={{ pwek_system_studio_license }}"
+        register: license_stat
+        failed_when: not license_stat.stat.exists
+      - name: Copy Intel System Studio license file
+        copy:
+          src: "{{ pwek_system_studio_license }}"
+          dest: "/opt/intel/license.lic"
+          mode: 0644
+          remote_src: yes
+        become: yes
+
+      - name: Get System Studio offline pacakge path
+        shell: "ls -dt /opt/intel/system_studio_2019_update_3* | head -1"
+        register: icc_path
+        become: yes
+
+      - name: Set correct settings
+        block:
+        - lineinfile:
+            path: "{{ icc_path.stdout }}/silent.cfg"
+            regexp: "^(.*)ACCEPT_EULA="
+            line: "ACCEPT_EULA=accept"
+          become: yes
+        - lineinfile:
+            path: "{{ icc_path.stdout }}/silent.cfg"
+            regexp: "^(.*)PSET_INSTALL_DIR="
+            line: "PSET_INSTALL_DIR=/opt/intel"
+          become: yes
+        - lineinfile:
+            path: "{{ icc_path.stdout }}/silent.cfg"
+            regexp: "^(.*)ACTIVATION_LICENSE_FILE="
+            line: "ACTIVATION_LICENSE_FILE=/opt/intel/license.lic"
+          become: yes
+        - lineinfile:
+            path: "{{ icc_path.stdout }}/silent.cfg"
+            regexp: "^(.*)ACTIVATION_TYPE="
+            line: "ACTIVATION_TYPE=license_file"
+          become: yes
+
+      - name: Install ICC
+        command: "./install.sh -s silent.cfg"
+        args:
+          chdir: "{{ icc_path.stdout }}"
+        become: yes
+
+    - name: Get installed System Studio path
+      shell: "ls -dt /opt/intel/system_studio* | head -1"
+      register: icc_path
+      become: yes
+
+    - name: Install required packages
+      yum:
+        name:
+          # - hugepages
+          - libhugetlbfs-utils
+          - numactl-devel
+          - glibc-static
+          - libstdc++-static
+          - kernel-devel
+          - gcc-c++
+          - cmake
+          - libhugetlbfs-devel
+          - patch
+          - expect
+        state: present
+      become: yes
+
+    - name: Install FlexRAN SDK
+      block:
+      - name: Unarchive Flexran
+        unarchive:
+          src: "{{ remote_pwek_path }}/FlexRAN-20.11.tar.gz"
+          dest: "{{ pwek_flexran_extracted }}/"
+          remote_src: yes
+      - name: Upload the expect script file
+        template:
+          src: "answer.sh.j2"
+          dest: "{{ pwek_flexran_extracted }}/answer.sh"
+          mode: a+x
+      - name: Run extract script
+        command: "./answer.sh"
+        args:
+          chdir: "{{ pwek_flexran_extracted }}"
+        changed_when: false
+      - name: Build SDK
+        shell: >
+          source {{ icc_path.stdout }}/bin/iccvars.sh intel64 &&
+          source set_env_var.sh &&
+          ./flexran_build.sh -r 5gnr_sub6 -m sdk -b
+        args:
+          chdir: "{{ pwek_flexran_extracted }}"
+          executable: /bin/bash
+        environment:
+          PATH: "{{ ansible_env.PATH }}:{{ icc_path.stdout }}/bin/"
+          LD_LIBRARY_PATH: "{{ pwek_flexran_extracted }}/wls_mod/lib"
+        become: yes
+
+    - name: Build DPDK
+      block:
+      - name: Download DPDK
+        get_url:
+          url: "http://static.dpdk.org/rel/dpdk-19.11.tar.gz"
+          dest: "{{ remote_pwek_path }}"
+        become: yes
+      - name: Extract DPDK
+        unarchive:
+          src: "{{ remote_pwek_path }}/dpdk-19.11.tar.gz"
+          dest: "{{ remote_pwek_path }}"
+          remote_src: yes
+        become: yes
+      - name: Apply patch
+        patch:
+          src: dpdk_19.11_20.11_rc1.patch
+          basedir: "{{ pwek_dpdk_path }}"
+          strip: 1
+          remote_src: no
+          state: present
+        register: patch_result
+        become: yes
+      - name: Edit config/common_base
+        block:
+        - lineinfile:
+            path: "{{ pwek_dpdk_path }}/config/common_base"
+            regexp: "^(.*)CONFIG_RTE_BBDEV_SDK_AVX2="
+            line: "CONFIG_RTE_BBDEV_SDK_AVX2=y"
+          become: yes
+        - lineinfile:
+            path: "{{ pwek_dpdk_path }}/config/common_base"
+            regexp: "^(.*)CONFIG_RTE_BBDEV_SDK_AVX512="
+            line: "CONFIG_RTE_BBDEV_SDK_AVX512=y"
+          become: yes
+      - name: Install DPDK
+        shell: >
+          cd {{ pwek_flexran_extracted }} &&
+          source set_env_var.sh &&
+          cd {{ pwek_dpdk_path }} &&
+          source {{ icc_path.stdout }}/bin/iccvars.sh intel64 &&
+          make install -j 200 T=x86_64-native-linuxapp-icc DESTDIR={{ pwek_dpdk_path }}
+        args:
+          chdir: "{{ pwek_dpdk_path }}"
+          executable: /bin/bash
+        environment:
+          PATH: "{{ ansible_env.PATH }}:{{ icc_path.stdout }}/bin/"
+          RTE_TARGET: "x86_64-native-linuxapp-icc"
+          RTE_SDK: "{{ pwek_dpdk_path }}"
+          DESTDIR: "{{ pwek_dpdk_path }}"
+        become: yes
+
+      - name: Directory x86_64-native-linuxapp-icc with built dpdk should be created
+        block:
+        - name: check the directory x86_64-native-linuxapp-icc with built dpdk
+          stat:
+            path: "{{ pwek_dpdk_path }}/x86_64-native-linuxapp-icc"
+          register: this
+          become: yes
+
+        - name: delete build_pwek_dpdk related files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - "{{ pwek_flexran_extracted }}"
+            - "{{ pwek_dpdk_path }}"
+            - "{{ remote_pwek_path }}"
+            - "/opt/intel"
+          become: yes
+          when: not this.stat.exists
+
+        - name: fail build_pwek_dpdk task
+          fail:
+            msg: The directory x86_64-native-linuxapp-icc with built dpdk is not created.
+          when: not this.stat.exists
+
+  when: (not pwek_dpdk_dir.stat.exists) and (icc_dir | length == 0)

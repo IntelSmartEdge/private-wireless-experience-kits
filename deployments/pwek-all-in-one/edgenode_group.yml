@@ -1,0 +1,127 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+# Check VT-d open in bios
+vtd_bios_check: false
+
+# Kernel configuration
+kernel_rt_enable: true
+
+# Version of the kernel.
+# should use 3.10.0-1127.19.1.rt56.1116.el7.x86_64
+# rt_kernel_version: "3.10.0-1160.11.1.rt56.1145.el7.x86_64"
+# rt_kernel_version: "3.10.0-1062.12.1.rt56.1042.el7.x86_64"
+rt_kernel_version: "3.10.0-1127.19.1.rt56.1116.el7.x86_64"
+setup_user_defined_kernel_rt_repo: true
+
+# isolcpus_enabled controls the CPU isolation mechanisms configured via grub command line.
+isolcpus_enabled: true
+# CPUs to be isolated (for RT procesess)
+isolcpus: "1-31,33-63,65-95,97-127"
+# CPUs not to be isolate (for non-RT processes) - minimum of two OS cores necessary for controller
+os_cpu_affinity_cpus: "0,32,64,96"
+# Enabled hugepages
+hugepages_enabled: true
+# Size of a single hugepage (2M or 1G)
+default_hugepage_size: 1G
+# Amount of hugepages
+hugepages_1G: 53
+hugepages_2M: 0
+# Enabled additional grub parameters
+additional_grub_parameters_enabled: true
+additional_grub_parameters: "rdt=l3cat selinux=0 enforcing=0 nmi_watchdog=0 softlockup_panic=0 nosoftlockup intel_pstate=disable mce=off idle=poll audit=0"
+
+## Tuned configuration
+tuned_enable: true
+install_custom_tuned: true
+
+# Packages to install
+tuned_centos79_packages:
+  - http://linuxsoft.cern.ch/scientific/7x/x86_64/os/Packages/tuned-2.11.0-9.el7.noarch.rpm
+  - http://linuxsoft.cern.ch/scientific/7x/x86_64/os/Packages/tuned-profiles-realtime-2.11.0-9.el7.noarch.rpm
+# Profile to be applied
+tuned_profile_centos7: realtime
+
+## E810 driver update
+e810_driver_enable: true
+
+# Enable PTP
+ptp_sync_enable: true
+
+# ptp_port keeps the host's interface(s) connected to:
+# - a PTP MASTER node, in this case it should keep only one interface name, e.g.:
+#   ptp_port: enp134s0f1
+# - PTP SLAVE(S), then should store a list of interfaces connected to slaves, e.g.:
+#   ptp_port:
+#   - enp134s0f1
+# - Grand Master only for single node setup, then it should keep one interface name:
+ptp_port: "p7p3"
+
+# ptp_port_gm is the host's interface connected to a Grand Master:
+ptp_port_gm: "p7p3"
+
+# ptp_network_transport keeps network transport for ptp.
+# Valid options:
+# -2 Select the IEEE 802.3 network transport.
+# -4 Select the UDP IPv4 network transport.
+ptp_network_transport: "-4"
+
+# ptp domain
+# if not set, the default value is 0
+ptp_domain: "0"
+
+# Grand Master IP, e.g. (set this value for the single node setup):
+gm_ip: "10.0.1.179"
+
+# Set the following values for the single node setup.
+# If DHCP support on GMC is not enabled:
+# - ptp_port_ip contains a static IP for the server port connected to GMC:
+ptp_port_ip: "10.0.1.150"
+ptp_port_cidr: "24"
+
+############################## OPEN DEK kubernetes
+
+# k8s CNI
+sriov:
+  network_interfaces: '{
+    "{{ fronthaul.du_side.pf }}": "{{ fronthaul.du_side.vf_num }}",
+    "{{ midhaul.cu_side.pf }}": "{{ midhaul.cu_side.vf_num }}",
+    "{{ midhaul.du_side.pf }}": "{{ midhaul.du_side.vf_num }}",
+    "{{ backhaul.cu_side.pf }}": "{{ backhaul.cu_side.vf_num }}",
+    "{{ edgeapp.pf }}": "{{ edgeapp.vf_num }}",
+    }'
+  interface_subnets: []
+  interface_ips: []
+  network_name: []
+  vm_vf_ports: 0
+
+# Kubernetes Topology Manager configuration (for worker)
+# CPU settings
+cpu:
+  # CPU policy - possible values: none (disabled), static (default)
+  # policy: "static"
+  policy: "none"
+  # Reserved CPUs
+  reserved_cpus: "{{ os_cpu_affinity_cpus }}"
+
+# Kubernetes Topology Manager policy - possible values: none (disabled), best-effort (default), restricted, single-numa-node
+topology_manager:
+  policy: "none"
+#  policy: "single-numa-node"
+
+############################## OPEN DEK applications
+
+############################################################ PWEK All in One applications configuration
+
+### PWEK All in One applications configuration

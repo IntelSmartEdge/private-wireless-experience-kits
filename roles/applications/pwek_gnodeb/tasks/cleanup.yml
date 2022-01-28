@@ -1,0 +1,73 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: Release UPF Interface
+  command: "./release_upf_int.sh"
+  args:
+    chdir: "{{ pwek_scripts_path }}"
+  failed_when: false
+  changed_when: true
+  become: yes
+
+- name: running Clean hugepage
+  command: "./clean_hugepage.sh {{ upf_clean_option }} {{ hsize_count }}"
+  args:
+    chdir: "{{ pwek_scripts_path }}"
+  failed_when: false
+  changed_when: true
+
+- name: Stop corresponding pods
+  command: "./stop_pods.sh"
+  register: job_result
+  args:
+    chdir: "{{ pwek_gnodeb_scripts_path }}"
+  until: job_result is succeeded
+  retries: 10
+  delay: 3
+  failed_when: false
+  changed_when: true
+  delegate_to: "{{ groups['controller_group'][0] }}"
+
+# - name: delete cm for cu-wrapper
+#   command: "kubectl delete cm cu-wrapper du-wrapper -n pwek-rdc"
+#   ignore_errors: yes
+
+- name: running clean SRIOV
+  command: "./clean_sriov_cni.sh"
+  args:
+    chdir: "{{ pwek_gnodeb_scripts_path }}"
+  changed_when: true
+  failed_when: false
+  become: yes
+
+- name: running Clean hugepage
+  command: "./clean_hugepage.sh {{ bbu_clean_option }} {{ hsize_count }}"
+  args:
+    chdir: "{{ pwek_gnodeb_scripts_path }}"
+  changed_when: true
+  failed_when: false
+  become: yes
+
+- name: delete pwek_gnodeb related files on edge node
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - "{{ pwek_scripts_path }}"
+    - "{{ pwek_images_path }}"
+    - "{{ remote_pwek_path }}/{{ flexran_prebuild }}.tgz"
+    - "{{ flexran_prebuild_path }}"
+  changed_when: false
+  failed_when: false
+  become: yes
+  when: clean_pwek_files | default (False)
