@@ -1,0 +1,46 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2019-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: create temporary custom .smartedge_gitconfig
+  include_tasks: "{{ _gitconfig_bootstrap_path }}"
+
+- name: Build CLIs
+  block:
+    - name: build and copy EdgeDNS CLI
+      block:
+        - name: download modules for EdgeDNS cli
+          shell: source /etc/profile && go mod download
+          args:
+            chdir: "{{ _edge_agents_git_repo.download_dir }}/edgedns/cmd/edgednscli"
+          register: result
+          retries: "{{ number_of_retries }}"
+          until: result is succeeded
+          delay: "{{ retry_delay }}"
+        - name: build EdgeDNS cli
+          shell: source /etc/profile && make edgednscli
+          args:
+            chdir: "{{ _edge_agents_git_repo.download_dir }}/edgedns"
+        - name: copy EdgeDNS cli
+          copy:
+            src: "{{ item }}"
+            dest: /usr/local/bin
+            remote_src: true
+            mode: a=rx,u+w
+          loop:
+            - "{{ _edge_agents_git_repo.download_dir }}/edgedns/dist/edgednscli"
+            - "{{ _edge_agents_git_repo.download_dir }}/edgedns/deployment/edgednscli/kubectl-edgedns"
+          become: yes
+
+  always:
+    - name: remove .smartedge_gitconfig
+      include_tasks: "{{ _gitconfig_remove_path }}"

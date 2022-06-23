@@ -1,0 +1,97 @@
+#!/bin/sh
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+get_cpu_list(){
+cpus=$(cat /sys/fs/cgroup/cpuset/cpuset.cpus)
+cpu_l=""
+for i in $(echo $cpus | tr , " "); do
+  # if [[ $i =~ "-" ]]; then
+  if [ -z "${i##*-*}" ]; then
+    bg=${i%%-*}
+    en=${i##*-}
+    for j in $(seq $bg $en);do
+      if [ -z "$cpu_l" ]; then
+        cpu_l=$j
+      else
+        cpu_l="$cpu_l $j"
+      fi
+    done
+  else
+    if [ -z "$cpu_l" ]; then
+        cpu_l=$i
+      else
+        cpu_l="$cpu_l $i"
+    fi
+  fi
+done
+echo $cpu_l
+}
+
+sub_xml_val(){
+  sed -i -e ':a;N;$!ba; s/[^>]*\(<\/'"$1"'>\)/'"$2"'\1/'"$3"'' $4
+}
+
+allocate_cups(){
+argv=$#
+if [ $# -le 2 ]; then
+  echo "input $# arguments, it should not less than 2 arguments"
+  return 1
+fi
+
+CONF=$1
+NUM=$2
+
+if [ ! -e "$CONF" ]; then
+  echo "The first argument is configure file, it does not exist!"
+  return 1
+fi
+
+if [[ ! -z "${NUM//[0-9]}" ]]; then
+  echo "The second argument is required CPU numbers, it should be a number!"
+  return 1
+fi
+
+avaliable=$((argv - 2))
+
+if [ "$avaliable" -lt "$NUM" ]; then
+  echo "The process requires no less than $NUM, But k8s only allocate $avaliable to it!"
+  return 1
+fi
+
+echo "Please implement your CPU pin configure here, and call 5G CNF entry-point!"
+CPUM=$3
+sed -i -e "s/main-core .*/main-core $CPUM/" $CONF
+n=$((NUM - 1))
+CPUW=$(tr " " , <<< "${@:4:$n}")
+sed -i -e "s/corelist-workers .*/corelist-workers $CPUW/" $CONF
+NUMW=$n
+sed -i -e "s/^\(\s\+workers\) .*/\1 $NUMW/" $CONF
+}
+
+CPUS=$(get_cpu_list)
+echo "Avaliable CPUS: $CPUS"
+#taskset_core=$(echo $CPUS|awk '{print $2}')
+CPUS=$(echo $CPUS|awk '{for(i=2;i<=NF;i=i+1)printf " "$i;print ""}' )
+CONF=/root/config_map/vpp_startup_template.conf
+cp -f /root/config_map/vpp_startup_template.conf /opt/fesw/conf/
+sed -i -e "s/\(.*vpp_startup_template.conf\)/# \1/" /opt/fesw/scripts/start_upfdp.sh
+CONF=/opt/fesw/conf/vpp_startup_template.conf
+NUM=4  # required CPU numbers
+allocate_cups $CONF $NUM $CPUS
+echo "Hello from the script residing in helm chart."
+echo "New line added here."
+echo "Sleeping for infinity!"
+# sleep infinity
+# sleep 3600
+#sed    -i  -e  "s/\.\/upf/taskset -c $taskset_core  &/g" /root/docker-entrypoint.sh 
+/bin/bash /opt/fesw/scripts/start_upfdp.sh

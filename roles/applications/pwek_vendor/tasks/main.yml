@@ -1,0 +1,67 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: offline file preparation
+  block:
+    - name: transmit helm chart files and images
+      include_tasks: "transmit.yml"
+    - name: harbor repository for images loaded to Controller
+      include_tasks: harbor.yml
+      with_together:
+        - [ "amf", "appserver", "ausf", "gui", "mongodb", "oamamf", "oamausf", "oamsmf", "oamudm", "upfoam", "smf", "udm", "upfcp", "upfdp" ]
+        - [ "{{ amf_version }}", "{{ appserver_version }}", "{{ ausf_version }}", "{{ gui_version }}", "{{ mongodb_version }}", "{{ oamamf_version }}", "{{ oamausf_version }}", "{{ oamsmf_version }}", "{{ oamudm_version }}", "{{ upfoam_version }}", "{{ smf_version }}", "{{ udm_version }}", "{{ upfcp_version }}", "{{ upfdp_version }}" ]
+    - name: harbor repository for images loaded to Node 
+      include_tasks: harbor.yml
+      with_together:
+        - [ 'cu-int', 'cu-int-oam', 'du-int', 'du-int-oam', 'flexran-l1' ]
+        - [ "{{ cu_int_version }}", "{{ cu_int_oam_version }}", "{{ du_int_version }}", "{{ du_int_oam_version }}", "{{ flexran_l1_version }}" ]      
+
+- name: harbor address config
+  include_tasks: harbor_address_config.yml
+
+- name: pwek infra config
+  include_tasks: pwek_infra_config.yml
+
+- name: print setting CPU management nums and cpu policy
+  debug:
+    msg:
+      - "upf_core_num: {{ upf_core_num }}"
+      - "cu_core_num: {{ cu_core_num }}"
+      - "phy_core_num: {{ phy_core_num }}"
+      - "du_core_num: {{ du_core_num }}"
+      - "cpu.policy: {{ cpu.policy }}"
+  when: cpu.policy == 'static'
+
+- name: CPU management
+  include_tasks: cpu_management.yml
+  when:
+    - upf_core_num >= 5
+    - cu_core_num >= 6
+    - phy_core_num >= 8
+    - du_core_num >= 9
+    - cpu.policy == 'static'
+
+- name: Vendor Setup
+  include_tasks: vendor.yml
+  when: pwek_vendor_install_enable | default(False)
+
+- name: 'Deploy {{ pwek_namespace_name }}'
+  command: 'helm install -n {{ pwek_namespace_name }} v{{ item }} {{ helm_chart_path }}/{{ item }}/'
+  args:
+    chdir: '{{ helm_chart_path }}'
+  changed_when: false
+  loop:
+    - "cn"
+    - "du"
+    - "cu"
+  when: pwek_vendor_install_enable | default(False)

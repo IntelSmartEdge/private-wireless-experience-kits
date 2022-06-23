@@ -7,13 +7,9 @@ skip_list:
   - 'indentation'
 
 exclude_paths:
-  - roles/telemetry/collectd/controlplane/files/
-  - roles/telemetry/collectd/node/files/
   - roles/telemetry/prometheus/files/
-  - roles/telemetry/statsd-exporter/files
-  - roles/kubernetes/dashboard/files
+  - roles/telemetry/statsd_exporter/files
   - roles/nfd/files/
-  - roles/bb_config/charts
   - roles/baseline_ansible
   - .github/
   - cloud

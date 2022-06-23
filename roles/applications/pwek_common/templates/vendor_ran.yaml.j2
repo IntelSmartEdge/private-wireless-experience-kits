@@ -1,0 +1,65 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+apiVersion: "pwek.smart.edge.org/v1"
+kind: Ran
+metadata:
+  name: common
+spec:
+# Type: AU or ORAN. By default, both AU and ORAN are support. Radisys is Oran, Comba is AU.
+  ncu: 1
+  ndu: 1
+# 5GC：5GC info, it maybe the entry point of AMF. gNode will connected to 5GC.
+#   amf_service_ip: ip_adress    # not input by user.
+#   amf_service_port: port_number    # not input by user.
+#   Status: describe the 5GC are ready, and UE can access 5G private wireless network.  Please consider which indicators to monitor.
+# vendor special orchestrator/operator/scripts should check does it support this version profile. 
+  version: 2.5.3
+#  If the, vendor should generate the RIC topology.  Optional.
+  ric: ric
+#  radisys/comba,  Will call helm chart by vendor. For operator there will be an plugin for vendor.   # who use it?
+  vendor: {{ pwek_vendor }}
+  fronthual:
+    duSide0: {{ fronthaul.du_side.resourceName[0] }}
+{% if fronthaul.du_side.resourceName | length == 2 %}
+    duSide1: {{ fronthaul.du_side.resourceName[1] }}
+{% endif %}
+  # comba ignore this option
+  midhual:
+    duSide: {{ midhaul.du_side.resourceName }}
+    cuSide: {{ midhaul.cu_side.resourceName }}
+  backhaul:
+    cuSide: {{ backhaul.cu_side.resourceName }}
+    upfSide: {{ backhaul.upf_side.resourceName }}
+  # require cpu management， there will be a rancpuinfo CR
+  cpuInfos: common
+  # there will be a hugepageinfo CR?
+  hugepageInfos:
+  # pre check, if only 2m hugepage, raise error as soon as possible
+    type: GB
+    cu: 10
+    du: 10
+  memorySize:
+    type: GB
+    cu: 1
+    du: 2
+  cuCryproto:
+    qat: 2
+  fecAccelerator:
+    number: 2
+  imageRegistry: "{{ _registry_ip_address }}:{{ docker_registry_port }}/intel"
+{% if fronthaul_e810_enable %}
+  nictype: E810
+{% else %}
+  nictype: X710
+{% endif %}

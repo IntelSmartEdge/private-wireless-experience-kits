@@ -1,6 +1,6 @@
 # INTEL CONFIDENTIAL
 #
-# Copyright 2021 Intel Corporation.
+# Copyright 2022 Intel Corporation.
 #
 # This software and the related documents are Intel copyrighted materials, and your use of
 # them is governed by the express license under which they were provided to you ("License").
@@ -11,16 +11,19 @@
 # other than those that are expressly stated in the License.
 
 ---
-- name: Create pwek_gnodeb scripts folder
+- name: include PTP vars
+  include_vars: ../../../../opendek/roles/infrastructure/ptp/common/defaults/main.yml
+
+- name: Create pwek scripts folder
   file:
-    path: "{{ pwek_gnodeb_scripts_path }}"
+    path: "{{ pwek_scripts_path }}"
     state: directory
     mode: 0755
 
 - name: Copy debug script files to edge nodes
   template:
     src: "{{ item }}.j2"
-    dest: "{{ pwek_gnodeb_scripts_path }}/{{ item }}"
+    dest: "{{ pwek_scripts_path }}/{{ item }}"
     mode: a+x
   with_items:
     - "start_1588.sh"

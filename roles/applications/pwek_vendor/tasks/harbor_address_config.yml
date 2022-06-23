@@ -1,0 +1,57 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: include docker registry vars
+  include_vars: ../../../../opendek/roles/kubernetes/harbor_registry/controlplane/defaults/main.yml
+
+- name: update cn registry ip
+  replace:
+    path: "{{ helm_chart_path }}/cn/values.yaml"
+    regexp: "ip:.*$"
+    replace: "ip: {{ _registry_ip_address }}"
+
+- name: update cn registry port
+  replace:
+    path: "{{ helm_chart_path }}/cn/values.yaml"
+    regexp: "port:$"
+    replace: "port: {{ docker_registry_port }}/intel"
+
+- name: update cu-int registry address
+  replace:
+    path: "{{ helm_chart_path }}/cu/values.yaml"
+    regexp: "repository: cu-int"
+    replace: "repository: {{ _registry_ip_address }}:{{ docker_registry_port }}/intel/cu-int"
+
+- name: update cu-int-oam registry address
+  replace:
+    path: "{{ helm_chart_path }}/cu/values.yaml"
+    regexp: "repository: cu-int-oam"
+    replace: "repository: {{ _registry_ip_address }}:{{ docker_registry_port }}/intel/cu-int-oam"
+
+- name: update du flexran-l1 registry address
+  replace:
+    path: "{{ helm_chart_path }}/du/values.yaml"
+    regexp: "repository: flexran-l1"
+    replace: "repository: {{ _registry_ip_address }}:{{ docker_registry_port }}/intel/flexran-l1"
+
+- name: update du-int registry address
+  replace:
+    path: "{{ helm_chart_path }}/du/values.yaml"
+    regexp: "repository: du-int"
+    replace: "repository: {{ _registry_ip_address }}:{{ docker_registry_port }}/intel/du-int"
+
+- name: update du-int-oam registry address
+  replace:
+    path: "{{ helm_chart_path }}/du/values.yaml"
+    regexp: "repository: du-int-oam"
+    replace: "repository: {{ _registry_ip_address }}:{{ docker_registry_port }}/intel/du-int-oam"

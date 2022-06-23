@@ -27,31 +27,8 @@
         group: "{{ project_group }}"
       loop:
         - "{{ project_dir }}/certs"
-        - "{{ project_dir }}/certs/telemetry"
         - "{{ project_dir }}/configs"
         - "{{ project_dir }}/scripts"
-
-    - name: create collectd certificate directory
-      file:
-        path: "{{ project_dir }}/certs/telemetry/collectd"
-        state: directory
-        mode: a=rx,u+w
-        owner: "{{ ansible_user }}"
-        group: "{{ project_group }}"
-      when: "telemetry_collectd_enable | default(True)"
-
-    - name: create collectd config directory
-      file:
-        path: "{{ item }}"
-        state: directory
-        mode: a=rx,u+w
-        owner: "{{ ansible_user }}"
-        group: "{{ project_group }}"
-      loop:
-        - "{{ project_dir }}/collectd"
-        - "{{ project_dir }}/collectd/configs"
-        - "{{ project_dir }}/collectd/pmd"
-      when: "telemetry_collectd_enable | default(True)"
 
     - name: create edgednssvr directory
       file:

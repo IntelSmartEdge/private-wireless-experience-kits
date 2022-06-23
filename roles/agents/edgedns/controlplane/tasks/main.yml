@@ -1,0 +1,55 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2019-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: include common vars
+  include_vars: ../../common/defaults/main.yml
+
+- name: make sure edge-agents, certs and configs directories exists
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: a=rwx
+    owner: "{{ ansible_user }}"
+    group: "{{ project_group }}"
+  loop:
+    - "{{ agents_dir }}"
+    - "{{ _certs_dest }}"
+    - "{{ _configs_dest }}"
+  become: yes
+
+- name: generate certs of edgedns components
+  include_tasks: certs.yml
+
+- name: remove edgedns release if exist
+  block:
+    - name: check if edgedns release exists
+      command: helm status -n "{{ system_namespace }}" "{{ _edns_helm_release_name }}"
+      ignore_errors: yes
+      register: get_release
+    - name: remove edgedns release
+      command: helm uninstall -n "{{ system_namespace }}" "{{ _edns_helm_release_name }}"
+      when: get_release.rc == 0
+      changed_when: true
+
+- name: apply edgedns definitions
+  command: >
+    helm install -n "{{ system_namespace }}" "{{ _edns_helm_release_name }}" "{{ _edns_helm_loc }}"
+    --set rbac.serviceaccount_namespace="{{ system_namespace }}"
+    --set env_configmap="{{ _smartedge_env_config }}"
+    --set volumes.hostpath.edgednssvr="{{ agents_dir }}"/edgednssvr/
+    --set volumes.hostpath.configs="{{ agents_dir }}"/configs/
+    --set volumes.hostpath.certs="{{ agents_dir }}"/certs/
+  changed_when: true
+
+- name: build CLIs
+  include_tasks: build_cli.yml

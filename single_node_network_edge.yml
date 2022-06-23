@@ -20,8 +20,13 @@
     - name: create helper variable
       set_fact:
         single_node_deployment: true
-    - name: check raw drive status
-      include_tasks: ./tasks/ssd_check.yml
+
+  # Required for EN6
+- hosts: controller_group
+  pre_tasks:
+    - name: Overwrite OpenDEK variables
+      set_fact:
+        telemetry_prometheus_remote_write_targets: "{{ telemetry_prometheus_remote_write_targets + [ controller_m3_endpoint ] }}"
 
 - name: Deploy single node infrastructure
   import_playbook: opendek/single_node_network_edge.yml

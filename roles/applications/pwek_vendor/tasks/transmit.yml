@@ -1,0 +1,94 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+- name: Create pwek dir in Controller
+  file:
+    path: "{{ remote_pwek_path }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: 0775
+    recurse: yes
+  become: yes
+
+- name: Prepare gnodeb environmment
+  block:
+  - name: 'Create directory for helm_charts on Controller'
+    file:
+      path: '{{ pwek_charts_path }}'
+      state: directory
+      recurse: yes
+      mode: 0775
+  - name: 'Create directory for images on Controller'
+    file:
+      path: '{{ pwek_images_path }}'
+      state: directory
+      recurse: yes
+      mode: 0775
+  - name: 'Create directory for scripts on Controller'
+    file:
+      path: '{{ pwek_scripts_path }}'
+      state: directory
+      recurse: yes
+      mode: 0775
+
+- name: Copy Helm charts from Offline Packages to Controller
+  copy:
+    src: "{{ _offline_package_charts }}/"
+    dest: "{{ pwek_charts_path }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: 0775
+    remote_src: false
+  become: true
+
+- name: Copy pod images files from Offline Package to Controller
+  copy:
+    src: "{{ _offline_package_images }}/"
+    dest: "{{ pwek_images_path }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: 0775
+    remote_src: false
+  become: true
+
+- name: Unarchive helm chart compression package 
+  unarchive:
+    src: "{{ pwek_charts_path }}/{{ vendor_helm_chart }}.tgz"
+    dest: "{{ pwek_charts_path }}"
+    remote_src: yes
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: 0775
+  become: true
+
+- name: Copy script files to Controller
+  template:
+    src: "{{ item }}.j2"
+    dest: "{{ helm_chart_path }}/{{ item }}"
+    mode: a+x
+  with_items:
+    - "upf.wrapper"
+    - "cu.wrapper"
+    - "phy.wrapper"
+    - "du.wrapper"
+  delegate_to: "{{ groups['controller_group'][0] }}"
+
+- name: 'Copy CPU management configuration script to the Controller'
+  copy:
+    src: "{{ item }}"
+    dest: "{{ helm_chart_path }}"
+    mode: a+x
+  with_items:
+    - "automation.sh"

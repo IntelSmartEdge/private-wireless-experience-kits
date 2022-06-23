@@ -1,6 +1,6 @@
 # INTEL CONFIDENTIAL
 #
-# Copyright 2021-2021 Intel Corporation.
+# Copyright 2021-2022 Intel Corporation.
 #
 # This software and the related documents are Intel copyrighted materials, and your use of
 # them is governed by the express license under which they were provided to you ("License").
@@ -15,27 +15,19 @@
 - hosts: controller_group
   any_errors_fatal: true
   roles:
-  - role: kubernetes/cnca
-    when: ne_ngc_enable | default(False)
-
-  - role: kubernetes/kubevirt
-    when: kubevirt_enable | default(True)
-
-  - role: kubernetes/rook_ceph
-    when: rook_ceph.enabled | default(False)
-
-  - role: kubernetes/nsm
-    when: ne_nsm_enable | default(False)
-
   - role: kubernetes/network_policies
     when: network_policies_enable | default(False)
-
   - role: kubernetes/pwek_label_node/controlplane
     when: pwek_enable | default(false)
+  - role: kubernetes/qat_dev_plugin/controller
+    when: qat_device_plugin_enable | default(False)
 
 - hosts: edgenode_group
   any_errors_fatal: true
   roles:
   - role: kubernetes/pwek_label_node/node
     when: pwek_enable | default(false)
-  
+  - role: kubernetes/qat_dev_plugin/node
+    when: qat_device_plugin_enable | default(False)
+  - role: kubernetes/customize_cpu_manager
+    when: fix_dek_k8s_bug | default(False)

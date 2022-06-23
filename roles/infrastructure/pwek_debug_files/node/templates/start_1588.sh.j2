@@ -2,7 +2,7 @@
 
 # INTEL CONFIDENTIAL
 #
-# Copyright 2020-2021 Intel Corporation.
+# Copyright 2020-2022 Intel Corporation.
 #
 # This software and the related documents are Intel copyrighted materials, and your use of
 # them is governed by the express license under which they were provided to you ("License").
@@ -18,7 +18,7 @@ SESSION=ptp1588
 PTPNIC={{ ptp_port }}
 PTPNIC=${PTPNIC:-p1p4}
 
-PTPCONF={{ project_dir }}/linuxptp/configs/default_slave.cfg
+PTPCONF={{ _linuxptp_git_repo.download_dir }}/configs/default_slave.cfg
 
 RED='\e[0;31m'
 GREEN='\033[0;32m'

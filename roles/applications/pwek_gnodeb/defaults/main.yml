@@ -79,7 +79,6 @@ harbor_addr: "{{ hostvars[groups['controller_group'][0]]['ansible_host'] }}"
 #docker_registry_port: 30003
 #harbor_addr: "10.240.224.238"
 harbor_url: "{{ harbor_addr }}:{{ docker_registry_port }}/intel"
-#harbor_admin_password: "Harbor12345"
 
 #define var for flexRAN_prebuild package
 flexran_prebuild: "flexRAN_preBuild"

@@ -1,0 +1,37 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2021 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+# PWEK resource path
+remote_pwek_path: "{{ project_dir }}/pwek"
+pwek_charts_path: "{{ remote_pwek_path }}/charts/"
+pwek_images_path: "{{ remote_pwek_path }}/images/"
+pwek_scripts_path: "{{ remote_pwek_path }}/scripts/"
+
+vendor_helm_chart: "radisys_5g_cnf"
+helm_chart_path: "{{ pwek_charts_path }}{{ vendor_helm_chart }}/deployment/helm"
+
+_pwek_5g_crd_dir: "{{ remote_pwek_path }}/pwek_crd"
+_pwek_vendor_cr_dir: "{{ remote_pwek_path }}/{{ pwek_vendor }}_cr"
+
+_pwek_5gcore_dir: "{{ remote_pwek_path }}/5gcore_entry_point"
+_pwek_5gran_dir: "{{ remote_pwek_path }}/5gran_entry_point"
+
+# General variables
+apply_configs_retries: 50
+apply_configs_delay: 10
+
+# CPU managerment
+upf_core_num: "{{ upf_core_num }}"
+cu_core_num: "{{ cu_core_num }}"
+phy_core_num: "{{ phy_core_num }}"
+du_core_num: "{{ du_core_num }}"

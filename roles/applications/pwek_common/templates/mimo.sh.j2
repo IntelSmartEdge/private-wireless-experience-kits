@@ -1,0 +1,57 @@
+#!/bin/sh
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+MIMO=common
+ 
+# config file directory 
+# DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+DIR={{ helm_chart_path }}
+echo "Directory is $DIR"
+helm_charts_home=$DIR
+DUCFG=$helm_charts_home/du/l2config/oam_3gpp_cell_cfg_mu1_1cell_flexran.xml
+
+values=$(kubectl get mimo $MIMO -n {{ pwek_namespace_name }} -o json | jq .spec)
+ 
+DLRANK=$(jq .dlrank <<< $values)
+DLANTPORT=$(jq .dlnumofantports <<< $values)
+ULRANK=$(jq .ulrank <<< $values)
+ULANTPORT=$(jq .ulnumofantports <<< $values)
+ 
+echo "setting MIMO for DU in $DUCFG from:"
+grep -e "[du]lNum[Of]*AntPorts" -e "[du]lRank"  $DUCFG
+ 
+# $1 element tag, $2 element value, $3 the n time occurrent, $4 file name
+function sub_xml_val ()
+{
+  sed -i -e ':a;N;$!ba; s/[^>]*\(<\/'"$1"'>\)/'"$2"'\1/'"$3"'' $4
+}
+ 
+XEL=dlRank VAL="$DLRANK" CUR=1
+XML="$DUCFG"
+sub_xml_val $XEL "$VAL" $CUR $XML
+ 
+XEL=dlNumAntPorts VAL="$DLANTPORT" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+ 
+XEL=ulRank VAL="$ULRANK" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+ 
+XEL=ulNumOfAntPorts VAL="$ULANTPORT" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+ 
+echo "setting MIMO for DU in $DUCFG to:"
+grep -e "[du]lNum[Of]*AntPorts" -e "[du]lRank"  $DUCFG
+ 
+echo "please run the follow command to setup du:"
+echo "  helm install vdu ./du"
+# helm del vcu vdu

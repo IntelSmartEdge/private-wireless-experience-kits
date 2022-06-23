@@ -30,7 +30,7 @@
     - "{{ role_path }}/templates/*.j2"
 
 - name: Apply PWEK Network Policies
-  command: kubectl apply -f  ./
+  command: kubectl apply -f  edgedns_network_policy.yml
   args:
     chdir: "{{ _pwek_network_policies_dir }}"
   changed_when: true

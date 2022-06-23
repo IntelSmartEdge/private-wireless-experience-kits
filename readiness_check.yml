@@ -1,6 +1,6 @@
 # INTEL CONFIDENTIAL
 #
-# Copyright 2021 Intel Corporation.
+# Copyright 2021-2022 Intel Corporation.
 #
 # This software and the related documents are Intel copyrighted materials, and your use of
 # them is governed by the express license under which they were provided to you ("License").
@@ -21,51 +21,13 @@
         include: ./opendek/tasks/readiness_tasks.yml
 
       - block:
-        - name: ngc readiness check
-          include_tasks: ./roles/applications/ngc/controlplane/tasks/readiness.yml
-          when:
-            - "'controller_group' in group_names"
-            - ne_ngc_enable | default(False)
-        tags: ngc
-
-      - block:
-        - name: cellular-agent readiness check
-          include_tasks: ./roles/agents/cellular-agent/cellularagent/tasks/readiness.yml
-          when:
-            - "'controller_group' in group_names"
-            - cellularagent_enable | default(False)
-
-      - block:
-        - name: deployment agent readiness check
-          include_tasks: ./roles/agents/deployment_agent/agent/tasks/readiness.yml
-          when:
-            - "'controller_group' in group_names"
-            - da_enable | default(False)
-        tags: deployment_agent
-
-      - block:
-        - name: deployment agent operator readiness check
-          include_tasks: ./roles/agents/deployment_agent/operator/tasks/readiness.yml
-          when:
-            - "'controller_group' in group_names"
-            - da_enable | default(False)
-
-      - block:
         - name: edgedns readiness check
           include_tasks: ./roles/agents/edgedns/controlplane/tasks/readiness.yml
           when:
             - "'controller_group' in group_names"
             - "dns_enable | default(False)"
         tags: edgedns
-
-      - block:
-        - name: nsm readiness check
-          include_tasks: ./roles/kubernetes/nsm/tasks/readiness.yml
-          when:
-            - "'controller_group' in group_names"
-            - ne_nsm_enable | default(False)
-        tags: nsm
-
+      
       rescue:
         - block:
           - name: Call log collector

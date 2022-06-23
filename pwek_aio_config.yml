@@ -5,9 +5,9 @@
 # (providing only token is not enough, since ESP requires username as well).
 # It is assumed that both repositories (ESP and profiles) are on the same github site,
 # accessible with the same personal token belonging to same user.
-github:
+git:
   user: ''
-  token: ''
+  password: '' # The 'password' field accepts one of two values git password or token.
 
 esp:
   url: https://github.com/intel/Edge-Software-Provisioner
@@ -40,15 +40,22 @@ docker:
 # ntp server address used during deploy
 ntp_server: ''
 
+# you can customize the hostname according to the MAC address
+# Please avoid using special characters, such as "#" is not supported
+hosts:
+  - name: smartedge-open-pwek-server-1
+    mac: aa:bb:cc:dd:ee:f0
+
 # list of profiles (at least one profile should be defined)
 profiles:
   - name: Smart_Edge_Open_Private_Wireless_Experience_Kit
+    bare_os: false  # enable only if donnot need install Experience_Kit
     url: https://github.com/smart-edge-open/profiles-centos.git
-    branch: smart-edge-open-22.01
+    branch: smart-edge-open-22.04
     scenario: multi-node       # possible scenarios: multi-node only
     experience_kit:
       url: https://github.com/smart-edge-open/private-wireless-experience-kits.git
-      branch: smart-edge-open-22.01
+      branch: smart-edge-open-22.04
       deployment: pwek-all-in-one
     controlplane_mac: ''
     #We do not support "root" account here
@@ -70,12 +77,21 @@ profiles:
             # No proxy setting contains addresses and networks that should not be accessed using proxy (e.g. local network, Kubernetes CNI networks)
             no_proxy: ""
 
-          openness_enable: false
-          dns_enable: false
-          e810_driver_enable: true
+          fronthaul_e810_enable: true
+          # Option #1
+          pwek_common_enable: true
+          # Option #2
+          pwek_vendor_enable: true
+          # Option #2 manual launch vendor 5G
+          pwek_vendor_install_enable: true
+          pwek_vendor: radisys
+
+          openness_enable: true
+          dns_enable: true
           pwek_offline_package_path: "/opt/pwek_offline_files/"
         controller_group:
         edgenode_group:
+          e810_driver_enable: true
           ptp_sync_enable: true
     host_vars:
       hosts:
@@ -87,7 +103,7 @@ profiles:
       # - file_path: "/root/syscfg_package.zip"
       #   dest_path: "/opt/seo/biosfw/"
       - file_path: "/opt/pwek_offline_files"
-        dest_path: "../pwek_offline_files"
+        dest_path: "/opt/pwek_offline_files"
     # Define additional inventory groups where hosts belong to.
     # Possible host names: controller, node01
     # Note: some Experience Kits require to provide at least a group name with no hosts.

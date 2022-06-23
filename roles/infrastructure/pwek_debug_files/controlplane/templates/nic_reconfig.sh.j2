@@ -1,0 +1,169 @@
+#!/bin/bash
+
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+#Please config dir and node name here!!!
+
+
+sriov_network_config_dir={{ project_dir }}/sriov_network_configs/configs
+nodeName=see-12050613-pwek-bj2node
+
+
+
+echo "************************************************************"
+echo "* usage:                                                   *"
+echo "* $0 ---default config                        *"
+echo "* $0 810 ---810 config                        *"
+echo "* $0 710 ---710 config                        *"
+echo "************************************************************"
+
+################### backup configs ############################################
+#backup config files to /root/configsbak
+echo "******Backup Sriov configuration files to /root/configsbak**"
+cp -r $sriov_network_config_dir /root/configsbak
+cd $sriov_network_config_dir
+
+echo "************config files dir********************************"
+pwd
+
+
+################### delete configs ############################################
+# delete one file: kubectl delete -f  ./xxxxxx.yml
+# delete all config files:
+echo "****************delete all network resource ****************"
+kubectl delete -f  ./
+
+
+#please config numVfs/pfNames/deviceType for each interface below:
+
+
+########################## FH config ##########################################
+
+#front haul config
+if [ -n "$1" ]; then
+if [ $1 = "810" ]; then
+echo "*********************** 810 config *************************"
+numVfs=1
+elif [ $1 = "710" ]; then
+echo "*********************** 710 config *************************"
+numVfs=2
+fi
+fi
+
+if [ -z "$1" ]; then
+#Please config your vf numbers for FH!!!
+echo "***default config, Please config your vf numbers for FH!****"
+numVfs=1
+fi
+
+#rootDevices:"0000:b9:00.0"
+pfNames="p4p1#0-0"
+deviceType=vfio-pci
+
+#fh0
+sed -i "s/numVfs: [^ ]*/numVfs: $numVfs/g" fronthaul-du0-sriov_network_node_policy.yml
+sed -i "s/- \"[^ ]*/- $pfNames/g" fronthaul-du0-sriov_network_node_policy.yml
+sed -i "s/deviceType: [^ ]*/deviceType: $deviceType/g" fronthaul-du0-sriov_network_node_policy.yml
+
+if [ -n "$1" ]; then
+if [ $1 = "710" ]; then
+numVfs=2
+pfNames="p4p1#1-1"
+deviceType=vfio-pci
+
+#fh1
+sed -i "s/numVfs: [^ ]*/numVfs: $numVfs/g" fronthaul-du1-sriov_network_node_policy.yml
+sed -i "s/- \"[^ ]*/- $pfNames/g" fronthaul-du1-sriov_network_node_policy.yml
+sed -i "s/deviceType: [^ ]*/deviceType: $deviceType/g" fronthaul-du1-sriov_network_node_policy.yml
+fi
+fi
+
+
+################### MIDH DU config ############################################
+#midhaul-du config
+numVfs=2
+pfNames="p4p2#0-0"
+deviceType=vfio-pci
+
+#midhaul du
+sed -i "s/numVfs: [^ ]*/numVfs: $numVfs/g" midhaul-du-sriov_network_node_policy.yml
+sed -i "s/- \"[^ ]*/- $pfNames/g" midhaul-du-sriov_network_node_policy.yml
+sed -i "s/deviceType: [^ ]*/deviceType: $deviceType/g" midhaul-du-sriov_network_node_policy.yml
+
+################### MIDH CU config ############################################
+#midhaul-cu config
+numVfs=5
+pfNames="p4p2#1-1"
+deviceType=vfio-pci
+
+#midhaul cu
+sed -i "s/numVfs: [^ ]*/numVfs: $numVfs/g" midhaul-cu-sriov_network_node_policy.yml
+sed -i "s/- \"[^ ]*/- $pfNames/g" midhaul-cu-sriov_network_node_policy.yml
+sed -i "s/deviceType: [^ ]*/deviceType: $deviceType/g" midhaul-cu-sriov_network_node_policy.yml
+
+
+
+################### BACKH CU config ###########################################
+#backhaul-cu config
+numVfs=5
+pfNames="p4p2#2-2"
+deviceType=vfio-pci
+
+#backhaul cu
+sed -i "s/numVfs: [^ ]*/numVfs: $numVfs/g" ./backhaul-cu-sriov_network_node_policy.yml
+sed -i "s/- \"[^ ]*/- $pfNames/g" ./backhaul-cu-sriov_network_node_policy.yml
+sed -i "s/deviceType: [^ ]*/deviceType: $deviceType/g" ./backhaul-cu-sriov_network_node_policy.yml
+
+################### UPF IN config #############################################
+#upf-in config
+numVfs=5
+pfNames="p4p2#3-3"
+deviceType=vfio-pci
+
+#backhaul cu
+sed -i "s/numVfs: [^ ]*/numVfs: $numVfs/g" ./intel-sriov-upf-in-sriov_network.yml
+sed -i "s/- \"[^ ]*/- $pfNames/g" ./intel-sriov-upf-in-sriov_network.yml
+sed -i "s/deviceType: [^ ]*/deviceType: $deviceType/g" ./intel-sriov-upf-in-sriov_network.yml
+
+################### UPF OUT config ############################################
+#upf-out config
+numVfs=5
+pfNames="p4p2#4-4"
+deviceType=vfio-pci
+
+#backhaul cu
+sed -i "s/numVfs: [^ ]*/numVfs: $numVfs/g" ./upf-out-sriov_network_node_policy.yml
+sed -i "s/- \"[^ ]*/- $pfNames/g" ./upf-out-sriov_network_node_policy.yml
+sed -i "s/deviceType: [^ ]*/deviceType: $deviceType/g" ./upf-out-sriov_network_node_policy.yml
+
+################### other config ##############################################
+#add here
+
+
+################### apply configs #############################################
+# apply one file: kubectl apply -f  ./xxxxxx.yml
+# apply all config files:
+echo "********************apply all configs **********************"
+kubectl apply -f  ./
+
+if [ -n "$1" ]; then
+if [ $1 = "810" ]; then
+kubectl delete -f  ./fronthaul-du1-sriov_network_node_policy.yml
+fi
+fi
+kubectl get node $nodeName  -o json | jq '.status.allocatable'
+
+echo "******waiting 60s for network operator recofig finish*******"
+sleep 60
+kubectl get node $nodeName  -o json | jq '.status.allocatable'

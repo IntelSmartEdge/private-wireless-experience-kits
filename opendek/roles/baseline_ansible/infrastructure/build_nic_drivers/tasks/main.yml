@@ -65,7 +65,7 @@
         dest: "{{ driver_dir }}"
         list_files: true
         remote_src: true
-        mode: a=r,u+w
+        mode: a=rx,u+w
       become: yes
       register: untar_results
 

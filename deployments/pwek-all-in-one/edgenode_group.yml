@@ -11,6 +11,12 @@
 # other than those that are expressly stated in the License.
 
 ---
+# Setting below for CPU management
+# CPU policy - possible values: none (disabled), static (default)
+cpus_policy: "static"
+# Configure reserved CPUs for System threads
+reservedsys_cpus: "0,1,32-127"
+
 
 # Check VT-d open in bios
 vtd_bios_check: false
@@ -28,15 +34,15 @@ setup_user_defined_kernel_rt_repo: true
 # isolcpus_enabled controls the CPU isolation mechanisms configured via grub command line.
 isolcpus_enabled: true
 # CPUs to be isolated (for RT procesess)
-isolcpus: "1-31,33-63,65-95,97-127"
+isolcpus: "2-31,34-61,66-95,98-125"
 # CPUs not to be isolate (for non-RT processes) - minimum of two OS cores necessary for controller
-os_cpu_affinity_cpus: "0,32,64,96"
+os_cpu_affinity_cpus: "0,1,32-33,62-65,96-97,126-127"
 # Enabled hugepages
 hugepages_enabled: true
 # Size of a single hugepage (2M or 1G)
 default_hugepage_size: 1G
 # Amount of hugepages
-hugepages_1G: 53
+hugepages_1G: 100
 hugepages_2M: 0
 # Enabled additional grub parameters
 additional_grub_parameters_enabled: true
@@ -111,9 +117,9 @@ sriov:
 cpu:
   # CPU policy - possible values: none (disabled), static (default)
   # policy: "static"
-  policy: "none"
+  policy: "{{ cpus_policy }}"
   # Reserved CPUs
-  reserved_cpus: "{{ os_cpu_affinity_cpus }}"
+  reserved_cpus: "{{ reservedsys_cpus }}"
 
 # Kubernetes Topology Manager policy - possible values: none (disabled), best-effort (default), restricted, single-numa-node
 topology_manager:

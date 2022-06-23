@@ -1,0 +1,72 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+# offline package path on Ansible machine
+_offline_package_images: "{{ pwek_offline_package_path }}/images"
+_offline_package_charts: "{{ pwek_offline_package_path }}/charts"
+
+# PWEK resource path
+remote_pwek_path: "{{ project_dir }}/pwek"
+pwek_charts_path: "{{ remote_pwek_path }}/charts/"
+pwek_images_path: "{{ remote_pwek_path }}/images/"
+pwek_scripts_path: "{{ remote_pwek_path }}/scripts/"
+
+vendor_helm_chart: "radisys_5g_cnf"
+helm_chart_path: "{{ pwek_charts_path }}{{ vendor_helm_chart }}/deployment/helm"
+
+# CNFs version
+amf_version: "2.5.1_01"
+appserver_version: "2.5.1_01"
+ausf_version: "2.5.1_01"
+gui_version: "2.5.1_01"
+mongodb_version: "v1"
+oamamf_version: "2.5.1_01"
+oamausf_version: "2.5.1_01"
+oamsmf_version: "2.5.1_01"
+oamudm_version: "2.5.1_01"
+upfoam_version: "3.0.1"
+smf_version: "2.5.1_01"
+udm_version: "2.5.1_01"
+upfcp_version: "3.0.1"
+upfdp_version: "3.0.1"
+
+cu_int_version: "2.5.3"
+cu_int_oam_version: "2.5.3"
+du_int_version: "2.5.3"
+du_int_oam_version: "2.5.3"
+flexran_l1_version: "2107"
+du_int_fix_version: "2.5.3"
+
+# fh interface name
+fh_name: "{{ fronthaul.du_side.pf }}"
+
+# 5g core config variables
+oRuCUon1Vf_810_enabled: "1"
+oRuCUon1Vf_810_disabled: "0"
+u_plane_vlan_tag_810_enabled: "1"
+u_plane_vlan_tag_810_disabled: "2"
+fhVf_810_enabled: "1"
+fhVf_810_disabled: "0"
+uplaneVlan_810_enabled: "1"
+uplaneVlan_810_disabled: "2"
+
+
+# helm value and config varilables
+pwek_ctl_lable: "testnode: edge-cp"
+pwek_node_lable: "testnode: edge-node"
+
+# CPU managerment
+upf_core_num: "{{ upf_core_num }}"
+cu_core_num: "{{ cu_core_num }}"
+phy_core_num: "{{ phy_core_num }}"
+du_core_num: "{{ du_core_num }}"

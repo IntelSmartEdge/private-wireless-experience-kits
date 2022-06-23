@@ -22,6 +22,27 @@ kernel_rt_enable: true
 rt_kernel_version: "3.10.0-1127.19.1.rt56.1116.el7.x86_64"
 setup_user_defined_kernel_rt_repo: true
 
+# isolcpus_enabled: true
+
+# BJ#2: 2-21,26-45,50-69,74-93
+# BJ#4 and SH#2: 2-19,24-41,46-63,68-85
+# isolcpus: "2-21,26-45,50-69,74-93"
+
+# BJ#2: 0,1,22-25,46-49,70-73,94-95
+# BJ#4 and SH#2: 0,1,20-23,42-45,64-67,86-87
+# os_cpu_affinity_cpus: "0,1,22-25,46-49,70-73,94-95"
+hugepages_enabled: true
+# default_hugepage_size: 1G
+# hugepages_1G: 4
+# hugepages_2M: 0
+
+## GRUB configuration
+# Default grub parameters
+default_grub_params: "intel_iommu=on iommu=pt"
+# Enabled additional grub parameters
+additional_grub_parameters_enabled: true
+additional_grub_parameters: "rdt=l3cat selinux=0 enforcing=0 nmi_watchdog=0 softlockup_panic=0 nosoftlockup intel_pstate=disable mce=off idle=poll audit=0"
+
 # custom tuned packages defined for kernel rt
 install_custom_tuned: true
 tuned_packages:
@@ -32,16 +53,7 @@ tuned_packages:
 ntp_enable: true
 ntp_servers: ["ccr.corp.intel.com"] # the address needs to be filled before deployment
 
-# Enabled hugepages
-hugepages_enabled: true
-
-## GRUB configuration
-# Default grub parameters
-default_grub_params: "intel_iommu=on iommu=pt"
-# Enabled additional grub parameters
-additional_grub_parameters_enabled: true
-additional_grub_params: "idle=poll"
+## E810 driver update
+e810_driver_enable: false
 
 ### PWEK All in One applications configuration
-# Enabling roles in the IDO main playbook
-edgeapps_repo_enable: false

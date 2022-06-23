@@ -108,7 +108,7 @@ def collect_logs(user, host):
             user_prefix = f"{user}@"
 
 
-        subprocess.run( # nosec - B603
+        subprocess.run( # nosec - B602, B603
             "scp -C %s scripts/log_collector scripts/log_collector.json %s%s:~"
             % (file_name, user_prefix, host),
             shell=True,

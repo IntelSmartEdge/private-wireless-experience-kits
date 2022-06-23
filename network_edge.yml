@@ -11,6 +11,12 @@
 # other than those that are expressly stated in the License.
 
 ---
+# Required for EN6
+- hosts: controller_group
+  pre_tasks:
+    - name: Overwrite OpenDEK variables
+      set_fact:
+        telemetry_prometheus_remote_write_targets: "{{ telemetry_prometheus_remote_write_targets + [ controller_m3_endpoint ] }}"
 
 - name: Deploy infrastructure
   import_playbook: ./opendek/network_edge.yml
@@ -23,3 +29,6 @@
 
 - name: Provision Applications
   import_playbook: playbooks/applications.yml
+
+- name: Provision Agents
+  import_playbook: playbooks/agents.yml

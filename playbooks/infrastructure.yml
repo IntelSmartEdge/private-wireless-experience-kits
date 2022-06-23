@@ -1,6 +1,6 @@
 # INTEL CONFIDENTIAL
 #
-# Copyright 2021-2021 Intel Corporation.
+# Copyright 2021-2022 Intel Corporation.
 #
 # This software and the related documents are Intel copyrighted materials, and your use of
 # them is governed by the express license under which they were provided to you ("License").
@@ -12,32 +12,26 @@
 
 ---
 
-- hosts: localhost
-  roles:
-    - role: baseline_ansible/infrastructure/git_repo
-      vars:
-        git_repo_url: "{{ _edgeapps_git_repo.dir }}"
-        git_repo_dest: "{{ _edgeapps_git_repo.dest }}"
-        git_repo_branch: "{{ _edgeapps_git_repo.branch }}"
-        ansible_user: "{{ lookup('env', 'USER') }}"
-      when: edgeapps_repo_enable | default(False)
-
 - hosts: controller_group
   any_errors_fatal: true
   roles:
-    - role: infrastructure/epc_git_repo
-      when: ne_ngc_enable | default(False)
-    - role: infrastructure/set_cn_interfaces
-      when: set_core_network_interfaces | default(False)
-    - role: infrastructure/set_gnb_interfaces
-      when: set_gnodeb_interfaces | default(False)
+    - role: baseline_ansible/infrastructure/git_repo
+      vars:
+        git_repo_url: "{{ _edge_services_git_repo.url }}"
+        git_repo_dest: "{{ _edge_services_git_repo.download_dir }}"
+        git_repo_branch: "{{ _edge_services_git_repo.branch }}"
+    - role: infrastructure/pwek_debug_files/controlplane
+      when: pwek_enable | default(False)
 
 - hosts: edgenode_group
   any_errors_fatal: true
   roles:
-    - role: infrastructure/pwek_kernel_config
-      when: pwek_enable | default(False)
-    - role: infrastructure/build_pwek_dpdk
-      when: pwek_enable | default(False)
+    - role: baseline_ansible/infrastructure/git_repo
+      vars:
+        git_repo_url: "{{ _edge_services_git_repo.url }}"
+        git_repo_dest: "{{ _edge_services_git_repo.download_dir }}"
+        git_repo_branch: "{{ _edge_services_git_repo.branch }}"
     - role: infrastructure/pwek_debug_files/node
+      when: pwek_enable | default(False)
+    - role: infrastructure/pwek_kernel_config
       when: pwek_enable | default(False)

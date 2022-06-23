@@ -1,6 +1,6 @@
 # INTEL CONFIDENTIAL
 #
-# Copyright 2021 Intel Corporation.
+# Copyright 2021-2022 Intel Corporation.
 #
 # This software and the related documents are Intel copyrighted materials, and your use of
 # them is governed by the express license under which they were provided to you ("License").
@@ -21,58 +21,55 @@ cgroupfs_enable: True
 
 ## OPEN DEK kubernetes
 
-# DPDK
-dpdk_version: "19.11.1"
-dpdk_checksum: "43b691f830e47a84b20c716ccc7aff40"
-
-## OPEN DEK kubernetes
-
 # Network interface of edge node
+
+#for x710 NIC, vf_num: "2" and use both intel_sriov_10G_RRU_VF0/intel_sriov_10G_RRU_VF1 for FH port.
+#for x810 NIC, vf_num: "1" and use only intel_sriov_10G_RRU_VF0 for FH port.
 fronthaul:
   du_side:
-    pf: "p7p4"
-    vf_num: "2"
+    pf: "p4p1"
+    vf_num: "1"
     resourceName:
     - "intel_sriov_10G_RRU_VF0"
-    - "intel_sriov_10G_RRU_VF1"
+    #- "intel_sriov_10G_RRU_VF1"
     networkName:
     - "intel-sriov-10g-rru-vf0"
-    - "intel-sriov-10g-rru-vf1"
+    #- "intel-sriov-10g-rru-vf1"
 
 midhaul:
   cu_side:
-    pf: "p4p3"
-    vf_num: "4"
+    pf: "p4p2"
+    vf_num: "8"
     resourceName: "intel_sriov_CU"
     networkName: "intel-sriov-cu"
   du_side:
     pf: "p4p2"
-    vf_num: "4"
+    vf_num: "8"
     resourceName: "intel_sriov_DU"
     networkName: "intel-sriov-du"
 
 backhaul:
   cu_side:
-    pf: "p7p1"
-    vf_num: "2"
+    pf: "p4p2"
+    vf_num: "8"
     resourceName: "intel_sriov_10G_NGU"
     networkName: "intel-sriov-10g-ngu"
   upf_side:
-    pf: "p4p1"
-    vf_num: "0"
-    resourceName: "XXXXX"
-    networkName: "XXXX"
+    pf: "p4p2"
+    vf_num: "8"
+    resourceName: "intel_sriov_UPF_IN"
+    networkName: "intel-sriov-upf-in"
 
 # 5GC N6
 upf_data:
-  pf: "p4p4"
-  vf_num: "0"
-  resourceName: "XXXX"
-  networkName: "XXXX"
+  pf: "p4p2"
+  vf_num: "8"
+  resourceName: "intel_sriov_UPF_OUT"
+  networkName: "intel-sriov-upf-out"
 
 edgeapp:
-  pf: "p7p2"
-  vf_num: "5"
+  pf: "p4p2"
+  vf_num: "8"
   resourceName: "intel_sriov_10G_VEDIOSTREAM"
   networkName: "intel-sriov-10g-vediostream"
 
@@ -89,155 +86,64 @@ sriov_network_operator_configure_enable: true
 ## SR-IOV network configuration
 # SriovNetworkNodePolicies list
 sriov_network_node_policies:
+#for x710 NIC, use fronthaul-du0 and fronthaul-du1 for FH port.
+#for x810 NIC, use only fronthaul-du0 for FH port.
   - name: "fronthaul-du0"
     resource_name: "{{ fronthaul.du_side.resourceName[0] }}"
     num_vfs: "{{ fronthaul.du_side.vf_num }}"
     priority: 1
     vendor: 8086
     pf_names: ["{{ fronthaul.du_side.pf }}#0-0"]
-    device_type: netdevice
-  - name: "fronthaul-du1"
-    resource_name: "{{ fronthaul.du_side.resourceName[1] }}"
-    num_vfs: "{{ fronthaul.du_side.vf_num }}"
-    priority: 1
-    vendor: 8086
-    pf_names: ["{{ fronthaul.du_side.pf }}#1-1"]
-    device_type: netdevice
+    device_type: vfio-pci
+  #- name: "fronthaul-du1"
+  #  resource_name: "{{ fronthaul.du_side.resourceName[1] }}"
+  #  num_vfs: "{{ fronthaul.du_side.vf_num }}"
+  #  priority: 1
+  #  vendor: 8086
+  #  pf_names: ["{{ fronthaul.du_side.pf }}#1-1"]
+  #  device_type: vfio-pci
   - name: "midhaul-du"
     resource_name: "{{ midhaul.du_side.resourceName }}"
     num_vfs: "{{ midhaul.du_side.vf_num }}"
     priority: 1
     vendor: 8086
-    pf_names: ["{{ midhaul.du_side.pf }}"]
+    pf_names: ["{{ midhaul.du_side.pf }}#0-0"]
     device_type: netdevice
   - name: "midhaul-cu"
     resource_name: "{{ midhaul.cu_side.resourceName }}"
     num_vfs: "{{ midhaul.cu_side.vf_num }}"
     priority: 1
     vendor: 8086
-    pf_names: ["{{ midhaul.cu_side.pf }}"]
+    pf_names: ["{{ midhaul.cu_side.pf }}#1-1"]
     device_type: netdevice
   - name: "backhaul-cu"
     resource_name: "{{ backhaul.cu_side.resourceName }}"
     num_vfs: "{{ backhaul.cu_side.vf_num }}"
     priority: 1
     vendor: 8086
-    pf_names: ["{{ backhaul.cu_side.pf }}"]
+    pf_names: ["{{ backhaul.cu_side.pf }}#2-2"]
+    device_type: netdevice
+  - name: "upf-in"
+    resource_name: "{{ backhaul.upf_side.resourceName }}"
+    num_vfs: "{{ backhaul.upf_side.vf_num }}"
+    priority: 1
+    vendor: 8086
+    pf_names: ["{{ backhaul.upf_side.pf }}#3-3"]
+    device_type: netdevice
+  - name: "upf-out"
+    resource_name: "{{ upf_data.resourceName }}"
+    num_vfs: "{{ upf_data.vf_num }}"
+    priority: 1
+    vendor: 8086
+    pf_names: ["{{ upf_data.pf }}#4-4"]
     device_type: netdevice
   - name: "edgeapp"
     resource_name: "{{ edgeapp.resourceName }}"
     num_vfs: "{{ edgeapp.vf_num }}"
     priority: 1
     vendor: 8086
-    pf_names: ["{{ edgeapp.pf }}"]
+    pf_names: ["{{ edgeapp.pf }}#5-7"]
     device_type: netdevice
-
-# SriovNetworks list
-sriov_networks:
-  - name: "{{ fronthaul.du_side.networkName[0] }}"
-    network_namespace: "{{ pwek_namespace_name }}"
-    vlan: 2
-    trust_vf: "on"
-    capabilities: "{ \\\"mac\\\": true }"
-    ipam: |-
-      {
-      "type": "host-local",
-      "subnet": "10.76.217.0/24",
-      "rangeStart": "10.76.217.171",
-      "rangeEnd": "10.76.217.175",
-      "routes": [{
-        "dst": "0.0.0.0/0"
-      }],
-      "gateway": "10.76.217.1"
-      }
-    resource_name: "{{ fronthaul.du_side.resourceName[0] }}"
-  - name: "{{ fronthaul.du_side.networkName[1] }}"
-    network_namespace: "{{ pwek_namespace_name }}"
-    vlan: 1
-    trust_vf: "on"
-    capabilities: "{ \\\"mac\\\": true }"
-    ipam: |-
-      {
-      "type": "host-local",
-      "subnet": "10.76.217.0/24",
-      "rangeStart": "10.76.217.171",
-      "rangeEnd": "10.76.217.175",
-      "routes": [{
-        "dst": "0.0.0.0/0"
-      }],
-      "gateway": "10.76.217.1"
-      }
-    resource_name: "{{ fronthaul.du_side.resourceName[1] }}"
-  - name: "{{ midhaul.du_side.networkName }}"
-    network_namespace: "{{ pwek_namespace_name }}"
-    ipam: |-
-      {
-          "type": "host-local",
-          "subnet": "192.168.120.0/24",
-          "rangeStart": "192.168.120.199",
-          "rangeEnd": "192.168.120.202",
-          "routes": [{
-            "dst": "0.0.0.0/0"
-          }],
-          "gateway": "192.168.120.1"
-      }
-    resource_name: "{{ midhaul.du_side.resourceName }}"
-  - name: "{{ midhaul.cu_side.networkName }}"
-    network_namespace: "{{ pwek_namespace_name }}"
-    ipam: |-
-      {
-          "type": "host-local",
-          "subnet": "192.168.120.0/24",
-          "rangeStart": "192.168.120.195",
-          "rangeEnd": "192.168.120.198",
-          "routes": [{
-            "dst": "0.0.0.0/0"
-          }],
-          "gateway": "192.168.120.1"
-      }
-    resource_name: "{{ midhaul.cu_side.resourceName }}"
-  - name: "{{ backhaul.cu_side.networkName }}"
-    network_namespace: "{{ pwek_namespace_name }}"
-    ipam: |-
-      {
-          "type": "host-local",
-          "subnet": "5.5.5.0/24",
-          "rangeStart": "5.5.5.4",
-          "rangeEnd": "5.5.5.4",
-          "routes": [{
-            "dst": "0.0.0.0/0"
-          }],
-          "gateway": "5.5.5.1"
-      }
-    resource_name: "{{ backhaul.cu_side.resourceName }}"
-  - name: "{{ edge_dns.networkName }}"
-    network_namespace: "{{ application_namespace }}"
-    ipam: |-
-      {
-          "type": "host-local",
-          "subnet": "192.168.137.0/25",
-          "rangeStart": "192.168.137.10",
-          "rangeEnd": "192.168.137.20",
-          "routes": [{
-            "dst": "0.0.0.0/0"
-          }],
-          "gateway": "192.168.137.1"
-      }
-    resource_name: "{{ edgeapp.resourceName }}"
-  - name: "{{ openvino.networkName }}"
-    network_namespace: "default"
-    ipam: |-
-      {
-          "type": "host-local",
-          "subnet": "192.168.137.128/25",
-          "rangeStart": "192.168.137.130",
-          "rangeEnd": "192.168.137.150",
-          "routes": [{
-            "dst": "0.0.0.0/0"
-          }],
-          "gateway": "192.168.137.129"
-      }
-    resource_name: "{{ edgeapp.resourceName }}"
 
 ## Enable userspace drivers installation
 install_userspace_drivers_enable: true
@@ -273,46 +179,11 @@ sriov_fec_cluster_config:
     dl5g_num_aqs_per_groups: 16
     dl5g_aq_depth_log2: 4
 
-## E810 driver update
-e810_driver_enable: false #Can be removed if controller also requires driver update
-
-## Network Service Mesh
-ne_nsm_enable: false
-
 # Network Edge Node Feature Discovery (NFD)
 ne_nfd_enable: true
 
-# BIOSFW
-# Enable BIOSFW feature (requires SYSCFG package provided by user)
-# ne_biosfw_enable: false
-
-# QAT Device Plugin 
-# 07-06 Use /usr/src/charts QAT helm manually install
-# 07-28 Enable it because of suspecting not qat plugin issue
+# QAT Device Plugin
 qat_device_plugin_enable: true
-
-# Kube-virt settings
-kubevirt_enable: false
-
-# Telemetry
-# 1st phase: disable telemetry
-telemetry_grafana_enable: False
-telemetry_prometheus_enable: False
-telemetry_statsd_exporter_enable: False
-telemetry_collectd_enable: False
-telemetry_cadvisor_enable: False
-
-# Telemetry flavor - possible values: common (default), flexran, smartcity, corenetwork
-telemetry_flavor: common
-
-# RMD
-rmd_operator_enable: False
-
-## OPEN DEK applications
-eaa_enable: false
-dns_enable: false
-openness_enable: false
-
 
 ### PWEK All in One applications configuration
 ## SmartEdge namespaces
@@ -332,72 +203,78 @@ pwek_enable: true
 pwek_namespace_enable: true
 pwek_namespace_name: pwek-rdc
 
-pwek_5gc_enable: true
-pwek_gnodeb_enable: true
+fix_dek_k8s_bug: false
+pwek_enable_firewalld: false
+fronthaul_e810_enable: true
+
+# Option #1
+pwek_common_enable: true
+
+# Option #2
+pwek_vendor_enable: true
+# Option #2 manual launch vendor 5G
+pwek_vendor_install_enable: false
+
+pwek_vendor: radisys
+vendor_helm_chart: radisys_5g_cnf
 
 # PWEK Offline packages on Ansible deployment machine
 # Must be prepared before deployment by users
 pwek_offline_package_path: "/opt/pwek_offline_files/"
-clean_pwek_files: false
 
 # The package files location on the target cluster
 remote_pwek_path: "{{ project_dir }}/pwek"
-# on edge node
-pwek_system_studio_license: "{{ remote_pwek_path }}/license"
-pwek_flexran_extracted: "{{ remote_pwek_path }}/flexran"
 
-## CPU Core pinning
-dedicated_cpu:
-  i_upf: "43-45"
-  phy_l1:
-    timer_thread: "0"
-    LDPC_thread: "3"
-    BBUpool_worker_thread: "6-7"
-    radio_DPDK_master_thread: "18"
-    system_thread: "18"
-    xran_polling_thread: "20"
-    xran_packet_processing_thread: "21"
-  cu:
-    house_keeping: "3"
-    control_plane:
-      common: "3"
-    user_plane:
-      udp_rx_thread: "8"
-      udp_rx_dl_thread: "8"
-      udp_rx_ul_thread: "5"
-      dl_thread: "4"
-      ul_thread: "5"
-      udp_tx_dl_thread: "5"
-      udp_tx_ul_thread: "5"
-    dpdk_pool:
-      work0: "5"
-    fast_crypto_rx: "9"
-  du:
-    sys:
-      house_keeping: "13"
-      lower_cl: "11"
-      cl_recv: "12"
-      udp_rx: "14"
-    thread_pool:
-      wkr0: "15-16"
-    qcom:
-      tti_recv: "0"
-      l1_send: "0"
-    dpdk_pool:
-      work0: "17"
-      work1: "19"
-      work2: "10"
-      work3: "36"
+# Setting below for CPU management
+# Using default cores allocation below is preferred, or should be made sure upf/cu/phy/du core numbers are 5/6/8/9 respectively at least.
+upf_core_num: 5
+cu_core_num: 6
+phy_core_num: 8
+du_core_num: 10
 
-# The number should be consult with RRU vendor
-du_mac_cfg_cmn:
-  dl:
-    rank: "4"
-    antenna_ports_num: "4"
-  ul:
-    rank: "2"
-    antenna_ports_num: "2"
+# 5g core config variables
+oRuCUon1Vf_810_enabled: "1"
+oRuCUon1Vf_810_disabled: "0"
+u_plane_vlan_tag_810_enabled: "1"
+u_plane_vlan_tag_810_disabled: "2"
+fhVf_810_enabled: "1"
+fhVf_810_disabled: "0"
+uplaneVlan_810_enabled: "1"
+uplaneVlan_810_disabled: "2"
 
-# NOTE: WA for QAT configuration in FlexRAN CU Pod
-# num_fast_crypto_ports
-cu_fast_crypto_ports_num: "1"
+# helm value and config varilables
+pwek_ctl_lable: "testnode: edge-cp"
+pwek_node_lable: "testnode: edge-node"
+
+
+##################################################
+
+### Disable unused components
+
+## BIOSFW
+# Enable BIOSFW feature (requires SYSCFG package provided by user)
+# ne_biosfw_enable: false
+
+## Rook ceph
+rook_ceph_enabled: false
+
+## Kube-virt
+kubevirt_enable: false
+
+## Network Service Mesh
+ne_nsm_enable: false
+
+## Telemetry
+# 1st phase: disable telemetry
+telemetry_enable: false
+
+## DEK security features
+sgx_enabled: false
+platform_attestation_node: false
+platform_attestation_controller: false
+kmra_enable: false
+
+## OPEN DEK applications
+dns_enable: true
+openness_enable: true
+network_policies_enable: true

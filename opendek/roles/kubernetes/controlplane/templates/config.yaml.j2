@@ -1,6 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2019-2020 Intel Corporation
 
+{% if split_network is defined and split_network %}
+apiVersion: kubeadm.k8s.io/v1beta2
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: {{ kubernetes_service_host }}
+  bindPort: {{ kubernetes_service_port }}
+---
+{% endif %}
 apiVersion: kubeadm.k8s.io/v1beta2
 kind: ClusterConfiguration
 kubernetesVersion: v{{ _kubernetes_version }}
@@ -16,3 +24,7 @@ apiServer:
     service-node-port-range: "20000-39999"
 {% endif %}
     feature-gates: "DownwardAPIHugePages=True"
+{% if split_network is defined and split_network %}
+networking:
+  podSubnet: {{ calico_cidr }}
+{% endif %}

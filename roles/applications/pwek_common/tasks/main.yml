@@ -1,0 +1,138 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: include harbor registry vars
+  include_vars: ../../../../opendek/roles/kubernetes/harbor_registry/controlplane/defaults/main.yml
+
+- name: Create PWEK 5G CRD
+  block:
+    - name: Create directory for PWEK 5G CRD
+      file:
+        path: "{{ _pwek_5g_crd_dir }}"
+        state: directory
+        owner: "{{ project_user }}"
+        group: "{{ project_group }}"
+        mode: a=rx,u+w
+      become: yes
+    - name: template CRD for PWEK
+      template:
+        src: "{{ item }}.j2"
+        dest: "{{ _pwek_5g_crd_dir }}/{{ item }}"
+        force: true
+        mode: preserve
+      with_items:
+        - "profile_core_crd.yaml"
+        - "profile_ran_crd.yaml"
+        - "profile_gnb_mimo_crd.yaml"
+        - "profile_imsi_crd.yaml"
+        - "profile_cpu_crd.yaml"
+    - name: apply PWEK 5G CRD
+      command: kubectl apply -n {{ pwek_namespace_name }} -f  ./
+      args:
+        chdir: "{{ _pwek_5g_crd_dir }}"
+      changed_when: true
+      register: result
+      retries: "{{ apply_configs_retries }}"
+      until: result is succeeded
+      delay: "{{ apply_configs_delay }}"
+
+- name: Create Vendor 5G CR
+  block:
+    - name: "Create directory for {{ pwek_vendor }} 5G CR"
+      file:
+        path: "{{ _pwek_vendor_cr_dir }}"
+        state: directory
+        owner: "{{ project_user }}"
+        group: "{{ project_group }}"
+        mode: a=rx,u+w
+      become: yes
+    - name: "template CR for {{ pwek_vendor }}"
+      template:
+        src: "{{ item }}.j2"
+        dest: "{{ _pwek_vendor_cr_dir }}/{{ item }}"
+        force: true
+        mode: preserve
+      with_items:
+        - "vendor_core.yaml"
+        - "vendor_ran.yaml"
+        - "vendor_gnb_mimo.yaml"
+        - "vendor_imsi.yaml"
+        - "vendor_cpu.yaml"
+    - name: apply PWEK Vendor 5G CR
+      command: kubectl apply -n {{ pwek_namespace_name }} -f ./
+      args:
+        chdir: "{{ _pwek_vendor_cr_dir }}"
+      changed_when: true
+      register: result
+      retries: "{{ apply_configs_retries }}"
+      until: result is succeeded
+      delay: "{{ apply_configs_delay }}"
+
+- name: Create PWEK vendor tools
+  block:
+    - name: Create PWEK vendor tools entry point
+      template:
+        src: "{{ item }}.j2"
+        dest: "/usr/bin/{{ item }}"
+        force: true
+        mode: u=rwx,g=r,o=r
+      with_items:
+        - "start_core"
+        - "start_ran"
+        - "stop_core"
+        - "stop_ran"
+      become: yes
+    - name: Create directory for PWEK 5gcore vendor tools
+      file:
+        path: "{{ _pwek_5gcore_dir }}/{{ pwek_vendor }}"
+        state: directory
+        owner: "{{ project_user }}"
+        group: "{{ project_group }}"
+        mode: a=rx,u+w
+      become: yes
+    - name: Create directory for PWEK 5gran vendor tools
+      file:
+        path: "{{ _pwek_5gran_dir }}/{{ pwek_vendor }}"
+        state: directory
+        owner: "{{ project_user }}"
+        group: "{{ project_group }}"
+        mode: a=rx,u+w
+      become: yes
+    - name: Create PWEK 5gcore vendor tools
+      template:
+        src: "{{ item }}.j2"
+        dest: "{{ _pwek_5gcore_dir }}/{{ pwek_vendor }}/{{ item.split('.')[1] }}"
+        force: true
+        mode: u=rwx,g=r,o=r
+      with_items:
+        - "vendor.start_core"
+        - "vendor.stop_core"
+      become: yes
+    - name: Create PWEK 5gran vendor tools
+      template:
+        src: "{{ item }}.j2"
+        dest: "{{ _pwek_5gran_dir }}/{{ pwek_vendor }}/{{ item.split('.')[1] }}"
+        force: true
+        mode: u=rwx,g=r,o=r
+      with_items:
+        - "vendor.start_ran"
+        - "vendor.stop_ran"
+      become: yes
+    - name: Copy mimo script file into PWEK 5gran vendor directory
+      template:
+        src: "{{ item }}.j2"
+        dest: "{{ _pwek_5gran_dir }}/{{ pwek_vendor }}/{{ item }}"
+        mode: a+x
+      with_items:
+        - "mimo.sh"
+      become: yes

@@ -16,21 +16,15 @@
 kind: NetworkPolicy
 apiVersion: networking.k8s.io/v1
 metadata:
-  name: allow-traffic-to-edgedns-from-5gc
+  name: allow-traffic-to-edgedns
   namespace: {{ system_namespace }}
 spec:
   podSelector:
     matchLabels:
       name: edgedns
   ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          {{ deployment_5gc.label.key }}: {{ deployment_5gc.label.value }}
-      namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: {{ deployment_5gc.namespace }}
-  - ports:
+  - from: []
+    ports:
     - port: 53
       protocol: UDP
     - port: 4204

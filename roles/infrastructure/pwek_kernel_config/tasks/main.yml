@@ -70,12 +70,6 @@
   become: yes
   changed_when: false
 
-- name: stop firewalld #THIS HAS TO BE REMOVED
-  systemd:
-    name: firewalld
-    state: stopped
-  become: yes
-
 - name: install required packages for cpu frequency
   yum:
     name: msr-tools

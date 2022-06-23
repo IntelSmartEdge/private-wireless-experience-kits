@@ -10,14 +10,6 @@
     owner: "{{ ansible_user }}"
   become: yes
 
-- name: create temporary custom gitconfig
-  copy:
-    dest: "{{ project_dir }}/.smartedge_gitconfig"
-    mode: preserve
-    content: |
-      [url "https://{{ git_repo_token }}@github.com/"]
-        insteadOf = https://github.com/
-
 - name: create .gitconfig if needed
   file:
     path: "{{ ansible_env.HOME }}/.gitconfig"
@@ -33,9 +25,9 @@
     value: "{{ git_http_proxy }}"
   when: git_http_proxy | length > 0
 
-- name: add include to .gitconfig
+- name: add custom config to .gitconfig
   blockinfile:
     path: "{{ ansible_env.HOME }}/.gitconfig"
     block: |
-      [include]
-        path = "{{ project_dir }}/.smartedge_gitconfig"
+      [url "https://{{ git_repo_token }}@github.com/"]
+        insteadOf = https://github.com/

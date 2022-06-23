@@ -1,0 +1,26 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2019-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+
+_qat_dp:
+  git_url: "https://github.com/intel/intel-device-plugins-for-kubernetes.git"
+  git_ref: "v0.23.0"
+  version: "0.23.0"
+  dir: "{{ project_dir }}/qat-device-plugin"
+  image: "{{ _registry_ip_address }}:{{ _registry_port }}/intel/intel-qat-plugin"
+  namespace: "kube-system"
+  dpdk_drivers: "vfio-pci"
+  kernel_drivers: "dh895xccvf,c6xxvf,c3xxxvf,d15xxvf"
+  max_num_devices: 50
+  debug: "false"
+  apparmor_profile: "unconfined"

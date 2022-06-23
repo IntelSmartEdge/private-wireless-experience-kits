@@ -1,0 +1,64 @@
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2020 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+---
+- name: create temporary custom .smartedge_gitconfig
+  include_tasks: "{{ _gitconfig_bootstrap_path }}"
+
+- block:
+  - name: download modules for edgednssvr
+    shell: source /etc/profile && go mod download
+    args:
+      chdir: "{{ _edge_agents_git_repo.download_dir }}/edgedns/cmd/edgednssvr"
+    register: result
+    retries: "{{ number_of_retries }}"
+    until: result is succeeded
+    delay: "{{ retry_delay }}"
+
+  - name: build binaries and images
+    shell: source /etc/profile && make edgednssvr
+    args:
+      chdir: "{{ _edge_agents_git_repo.download_dir }}/edgedns"
+  always:
+    - name: remove .smartedge_gitconfig
+      include_tasks: "{{ _gitconfig_remove_path }}"
+
+# since these pods are part of EdgeDNS' Deployment will be recreated after deletion
+# this step is for pods to use newly created docker images from previous block
+- name: recreate edgedns pod
+  shell: >
+    set -o pipefail &&
+    kubectl delete --namespace={{ system_namespace }} $(kubectl get pods --namespace={{ system_namespace }}
+    --field-selector spec.nodeName={{ node_name }} -o=NAME | grep -E 'edgedns' )
+  delegate_to: "{{ groups['controller_group'][0] }}"
+  failed_when: false
+  changed_when: true
+
+# EdgeDNS pod send a CSR from an init container - we should automatically approve it
+- name: approve EdgeDNS CSRs
+  shell: |
+    set -o pipefail
+    kubectl get pods --namespace={{ system_namespace }} --field-selector spec.nodeName={{ node_name }} | \
+      grep -E '{{ item.pod }}' | grep -E 'Running'
+    if [ $? -ne 0 ]
+    then
+      kubectl certificate approve {{ item.svc }}
+      exit 1
+    fi
+  loop:
+    - { svc: "edgedns-{{ node_name }}", pod: "edgedns" }  # noqa braces
+  delegate_to: "{{ groups['controller_group'][0] }}"
+  register: result
+  retries: "{{ openness_pods_timeout_min }}"
+  delay: 60
+  until: result is succeeded
+  changed_when: true

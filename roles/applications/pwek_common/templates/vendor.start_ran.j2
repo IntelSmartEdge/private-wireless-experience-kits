@@ -1,0 +1,63 @@
+#!/bin/sh
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+BASEDIR=$(dirname "$0")
+echo "$BASEDIR"
+
+PWEKNS={{ pwek_namespace_name }}
+NS=${NS:-$PWEKNS}
+CHART=vcu
+TIMEOUT=300
+
+ranf=$(kubectl -n $NS get rans.pwek.smart.edge.org common -o json | jq .spec)
+VENDOR=$(jq -r .vendor <<< $ranf)
+
+{{ _pwek_5gran_dir }}/$VENDOR/mimo.sh
+
+ranf=$(kubectl -n pwek-rdc get rans.pwek.smart.edge.org common -o json | jq .spec)
+VENDOR=$(jq -r .vendor <<< $ranf)
+
+/opt/smartedge/pwek/5gran/$VENDOR/mimo.sh
+
+function check_helm_status {
+  expire=$(( $(date +%s) + $TIMEOUT ))
+  while true
+  do
+    status=$(helm status -n $1 $2 -o json | jq -r .info.status)
+    if [ "$status" = "deployed" ]; then
+      echo "$2 in $1 namespace is deployed"
+      return 0
+    else
+      echo "$2 status: $status"
+    fi
+
+    sleep 1
+    if [ $(date +%s) -ge $expire ]; then
+      echo "Timeout $TIMEOUT, status of $2 is not ready: $status."
+      return 1
+    fi
+  done
+}
+
+CHART=vcu
+echo "helm install -n $NS $CHART {{ helm_chart_path }}/cu/"
+helm install -n $NS $CHART {{ helm_chart_path }}/cu
+check_helm_status $NS $CHART
+helm status -n $NS $CHART
+
+CHART=vdu
+echo "helm install -n $NS $CHART {{ helm_chart_path }}/du/"
+helm install -n $NS $CHART {{ helm_chart_path }}/du
+check_helm_status $NS $CHART
+helm status -n $NS $CHART
