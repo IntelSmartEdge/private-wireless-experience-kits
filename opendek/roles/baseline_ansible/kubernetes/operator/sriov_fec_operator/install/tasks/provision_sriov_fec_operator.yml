@@ -41,7 +41,7 @@
   changed_when: true
 
 - name: install olm
-  command: operator-sdk olm install
+  command: operator-sdk olm install --version 0.21.2
   register: olm_inst
   failed_when: 
     - olm_inst.rc != 0
