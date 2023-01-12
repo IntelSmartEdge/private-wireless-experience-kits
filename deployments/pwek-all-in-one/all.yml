@@ -108,21 +108,21 @@ sriov_network_node_policies:
     priority: 1
     vendor: 8086
     pf_names: ["{{ midhaul.du_side.pf }}#0-0"]
-    device_type: netdevice
+    device_type: vfio-pci
   - name: "midhaul-cu"
     resource_name: "{{ midhaul.cu_side.resourceName }}"
     num_vfs: "{{ midhaul.cu_side.vf_num }}"
     priority: 1
     vendor: 8086
     pf_names: ["{{ midhaul.cu_side.pf }}#1-1"]
-    device_type: netdevice
+    device_type: vfio-pci
   - name: "backhaul-cu"
     resource_name: "{{ backhaul.cu_side.resourceName }}"
     num_vfs: "{{ backhaul.cu_side.vf_num }}"
     priority: 1
     vendor: 8086
     pf_names: ["{{ backhaul.cu_side.pf }}#2-2"]
-    device_type: netdevice
+    device_type: vfio-pci
   - name: "upf-in"
     resource_name: "{{ backhaul.upf_side.resourceName }}"
     num_vfs: "{{ backhaul.upf_side.vf_num }}"
@@ -211,7 +211,7 @@ fronthaul_e810_enable: true
 pwek_common_enable: true
 
 # Option #2
-pwek_vendor_enable: true
+pwek_vendor_enable: false
 # Option #2 manual launch vendor 5G
 pwek_vendor_install_enable: false
 

@@ -1,0 +1,48 @@
+#!/bin/bash
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+# This script is used to login the radisys cnf netconf console.
+# copy this file to /usr/local/bin/ before use.
+# usage:
+#   # show all oam consoles:
+#   kubectl oam console
+# or login one oam console, example du console
+#   kubectl oam console du
+# or get pure xml output
+#   kubectl oam console du --get | sed -e "1,/^netconf-console2*/d"
+# Note:
+#   for autocompletion, please ref: https://github.com/kubernetes/kubernetes/issues/74178
+
+NS=${NS:-pwek-rdc}
+if [ -z "$1" ]; then
+  kubectl get svc -n $NS | grep oam
+  exit 0
+fi
+
+oam=$1
+if [[ ! $1 =~ "oam" ]]; then
+  oam=$(kubectl get svc -n $NS | grep -e "oam*$oam" -e $oam*oam | head -n 1 |cut -d " " -f 1)
+fi
+
+spec=$(kubectl get svc -n $NS $oam --output="jsonpath={.spec}")
+host=$(jq ."clusterIP" <<< $spec | tr -d '"')
+port=$(jq ."ports[0].port" <<< $spec | tr -d '"')
+
+echo "login $oam"
+echo "Please use the follow pipeline as filter to get pure xml output."
+echo ' | sed -e "1,/^netconf-console2*/d"'
+echo "netconf-console2 --host $host --port $port"
+
+shift
+netconf-console2 --host $host --port $port "$@"

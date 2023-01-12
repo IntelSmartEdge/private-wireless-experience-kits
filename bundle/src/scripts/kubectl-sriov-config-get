@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+# This script is used to artifacts infomation in pwek sriov cm.
+# copy this file to /usr/local/bin/ before use.
+# usage:
+#   kubectl sriov cm get ~<[node]/>[resource]
+#   kubectl sriov cm get [~node/pattern]
+# or
+#   kubectl sriov cm get <[node]/>[resource]
+#   kubectl sriov cm get [node/resource]
+# Note:
+#   for autocompletion, please ref: https://github.com/kubernetes/kubernetes/issues/74178
+#   for template, please ref: https://kubernetes.io/docs/reference/kubectl/cheatsheet/
+#   for jq keys and values, please ref: https://stackoverflow.com/questions/34226370/jq-print-key-and-value-for-each-entry-in-an-object
+#   for pattern argument: There is a prefix "~" and sufix with substring. It does not support regular expression.
+
+
+cm="device-plugin-config"
+
+query=false
+if [[ "$1" == "~"* ]]; then
+  query=true
+fi
+
+res=${1#\~}
+
+if [[ "$res" =~ "/" ]]; then
+  node=${res%%/*}
+  resource=${res##*/}
+else
+  node=
+  resource=${res}
+fi
+
+if [ -n "$res" ]; then
+  datas=$(kubectl -n sriov-network-operator get cm "$cm" -o \
+    go-template='{{range $k,$v := .data}}{{`{"`}}{{$k}}{{`"`}}: {{$v}}{{`}`}}{{end}}' | jq)
+  if [[ "$query" == true ]]; then
+    if [ -n "$node" ]; then
+       jq '.["'"$node"'"].resourceList[] | select( .resourceName | contains("'"$resource"'"))' <<< "$datas"
+    else
+       jq 'to_entries | .[] | select(.value.resourceList[].resourceName | contains("'"$resource"'")) | .key' <<< "$datas"
+       jq 'values[] | .resourceList[] | select( .resourceName | contains("'"$resource"'"))' <<< "$datas"
+    fi
+  else
+    if [ -n "$node" ]; then
+       jq '.["'"$node"'"].resourceList[] | select(.resourceName == "'"$resource"'")' <<< "$datas"
+    else
+       jq 'to_entries | .[] | select(.value.resourceList[].resourceName == "'"$resource"'") | .key' <<< "$datas"
+       jq 'values[] | .resourceList[] | select(.resourceName == "'"$resource"'")' <<< "$datas"
+    fi
+  fi
+  exit 0
+fi
+
+if [ -z "$1" ]; then
+  kubectl -n sriov-network-operator get cm
+  echo "Sriov configure from configmap: $cm"
+  datas=$(kubectl -n sriov-network-operator get cm "$cm" -o \
+    go-template='{{range $k,$v := .data}}{{`{"`}}{{$k}}{{`"`}}: {{$v}}{{`}`}}{{end}}' | jq)
+  jq <<< "$datas"
+  echo "---- summary ----"
+  echo "Node:"
+  jq 'keys[]' <<< "$datas"
+  echo ""
+  echo "resources:"
+  jq 'keys[] as $k | "\($k)/\(.[$k] | .resourceList[].resourceName)"' <<< "$datas"
+fi

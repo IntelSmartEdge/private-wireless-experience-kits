@@ -1,0 +1,75 @@
+#!/bin/bash
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+# ENTRY=start_ran
+CRD=rans.pwek.smart.edge.org
+CRNAME=common
+RAN_SCRIPTS=/opt/smartedge/pwek/5gran_entry_point/
+NS=${NS:-pwek-rdc}
+PWEK_VENDOR_PATH=${RAN_SCRIPTS}
+
+if [ -z "$NS" ]
+then
+  echo "No namespace provide by 'NS' enviroment valiable."
+else
+  echo "Info: namespace is set to $NS by 'NS' enviroment valiable."
+fi
+
+if [ -z "$INNER_NS" ]
+then
+  echo "No built-in namespace specified, set namespace to ${NS:-default}."
+fi
+
+NS=${NS:-$INNER_NS}
+NS=${NS:-default}
+echo "Check ran profile in $NS namespace."
+
+profile=$(kubectl -n ${NS} get $CRD $CRNAME -o json | jq .spec)
+if [ "${PIPESTATUS[0]}" == 0 ]
+then
+  echo "Good: '${CRNAME}' resource of ran profile find in ${NS} namespace."
+else
+  echo "Error: No '${CRNAME}' resource of ran profile find in ${NS} namespace."
+  exit 1
+fi
+
+VENDOR=$(jq -r .vendor <<< $profile)
+ENTRY=kubectl-${VENDOR}-ran-start
+if [ -z "$VENDOR" ]
+then
+  echo "Error: vendor name is empty in '${CRNAME}' resource of ran profile."
+  exit 1
+else
+  echo "Good: Find vendor name $VENDOR in '${CRNAME}' resource of ran profile."
+fi
+
+if [ -e "$PWEK_VENDOR_PATH/$VENDOR" ]
+then
+  echo "Good: Find vendor $VENDOR toolkit path in $PWEK_VENDOR_PATH"
+else
+  echo "Error: Not find vendor $VENDOR toolkit path in $PWEK_VENDOR_PATH"
+  exit 1
+fi
+
+${cmd:-source} "$PWEK_VENDOR_PATH"/$VENDOR/env.sh
+
+if [ -e "$PWEK_VENDOR_PATH/$VENDOR/$ENTRY" ]
+then
+  echo "Run vendor tookkit entrypoint: $ENTRY"
+else
+  echo "Error: Please provide endor tookkit entrypoint: '${ENTRY}' in $PWEK_VENDOR_PATH/$VENDOR path."
+  exit 1
+fi
+
+$PWEK_VENDOR_PATH/$VENDOR/$ENTRY

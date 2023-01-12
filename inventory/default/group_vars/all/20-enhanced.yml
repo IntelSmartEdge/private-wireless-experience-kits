@@ -33,7 +33,7 @@ git_repo_token: ""
 _edge_services_git_repo:
   url: https://github.com/smart-edge-open/edge-services.git
   download_dir: "{{ project_dir }}/edgeservices"
-  branch: smart-edge-open-22.04
+  branch: smart-edge-open-23.01
 
 # If True, the repository will be deleted and cloned again
 # If False, repository will be left as it is and any changes won't be overwritten.
@@ -43,7 +43,7 @@ always_clean_repository: true
 _edge_agents_git_repo:
   url: https://github.com/smart-edge-open/edge-agents.git
   download_dir: "{{ project_dir }}/edge-agents"
-  branch: smart-edge-open-22.04
+  branch: smart-edge-open-23.01
 
 ## Network Policies for 5GC traffic
 network_policies_enable: false
@@ -54,7 +54,7 @@ openness_harbor_registry_ip: "{{ ansible_default_ipv4.address | default(ansible_
 openness_harbor_registry_address: "{{ openness_harbor_registry_ip }}:{{ docker_registry_port }}/intel"
 
 # Deploy OpenNESS services
-openness_enable: true #required for EdgeDNS
+openness_enable: true # required for EdgeDNS
 ## Edge DNS
 dns_enable: true
 

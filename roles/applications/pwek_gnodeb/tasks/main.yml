@@ -1,6 +1,6 @@
 # INTEL CONFIDENTIAL
 #
-# Copyright 2020-2021 Intel Corporation.
+# Copyright 2020-2022 Intel Corporation.
 #
 # This software and the related documents are Intel copyrighted materials, and your use of
 # them is governed by the express license under which they were provided to you ("License").
@@ -131,7 +131,7 @@
     when: not flexran_prebuild_check.stat.exists
 
 - name: Extract admin password
-  command: kubectl get secret --namespace harbor harbor-admin -o jsonpath="{.data.admin-password}"
+  command: kubectl get secret --namespace harbor harbor-app-core -o jsonpath="{.data.HARBOR_ADMIN_PASSWORD}"
   register: harbor_password_cmd
   delegate_to: "{{ groups['controller_group'][0] }}"
   changed_when: false

@@ -16,7 +16,7 @@
   pre_tasks:
     - name: Overwrite OpenDEK variables
       set_fact:
-        telemetry_prometheus_remote_write_targets: "{{ telemetry_prometheus_remote_write_targets + [ controller_m3_endpoint ] }}"
+        telemetry_prometheus_remote_write_targets: "{{ telemetry_prometheus_remote_write_targets }}"
 
 - name: Deploy infrastructure
   import_playbook: ./opendek/network_edge.yml

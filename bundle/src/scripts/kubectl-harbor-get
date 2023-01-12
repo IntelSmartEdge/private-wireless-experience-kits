@@ -1,0 +1,90 @@
+#!/bin/bash
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+# This script is used to artifacts infomation in pwek harbor.
+# copy this file to /usr/local/bin/ before use.
+# usage:
+#   kubectl harbor get <[project]> [repository]
+#   kubectl harbor get [project/~pattern]
+# or
+#   kubectl harbor get [project/repository]
+#   kubectl harbor get [project] [~pattern]
+# Note:
+#   for autocompletion, please ref: https://github.com/kubernetes/kubernetes/issues/74178
+#   for pattern argument: There is a prefix "~" and sufix with substring. It does not support regular expression.
+
+REP=""
+PRO=""
+echo "Get harbor artifacts in harbor. "
+pass=$(kubectl get secret --namespace harbor harbor-admin -o jsonpath="{.data.admin-password}" | base64 -d)
+port=$(kubectl get svc harbor -n harbor -o json | jq -c '.spec.ports[] | select(.name | contains("https"))' | jq .nodePort)
+controllerIP=$(kubectl get node -l "node-role.kubernetes.io/control-plane=" -o json | jq -c '.items[0].status.addresses[] | select(.type | contains("InternalIP"))' |jq -r .address)
+echo "Harbor endpoint is: $controllerIP:$port"
+
+if [[ "$1" == "~"* ]]; then
+  curl -X GET "https://$controllerIP:$port/api/v2.0/repositories?q=name=${1}" -H "accept: application/json" \
+   -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq
+  exit 0
+fi
+
+if [ -z "$1" ] ;then
+  curl -X GET "https://$controllerIP:$port"'/api/v2.0/repositories' -H "accept: application/json" \
+   -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq
+  curl -X GET "https://$controllerIP:$port/api/v2.0/projects" -H "accept: application/json" \
+   -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq
+  echo ""
+  echo "Porjects in harbor:"
+  curl -X GET "https://$controllerIP:$port/api/v2.0/projects" -H "accept: application/json" \
+   -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq ".[] | {id: .project_id, name}"
+  echo "Repositories in harbor:"
+  curl -X GET "https://$controllerIP:$port"'/api/v2.0/repositories' -H "accept: application/json" \
+   -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq ".[] | {id, name}"
+  exit 0
+else
+  PRO="${1%%/*}"
+  if [[ "$1" == *"/"* ]]; then
+    echo "It's there."
+    REP=${1##*/}
+  fi
+fi
+
+REP=${REP:-$2}
+if [ -z "$REP" ] ;then
+  curl -X GET "https://$controllerIP:$port/api/v2.0/projects/$1/repositories" -H "accept: application/json" \
+   -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq
+  echo ""
+  echo "repositories in projects $1:"
+  curl -X GET "https://$controllerIP:$port/api/v2.0/projects/$1/repositories" -H "accept: application/json" \
+   -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq ".[] | {id, name}"
+  exit 0
+else
+  if [[ "$REP" == "~"* ]]; then
+     curl -X GET "https://$controllerIP:$port/api/v2.0/projects/${PRO}/repositories?q=name=${REP}" -H "accept: application/json" \
+      -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq
+     echo ""
+     echo "Wildcards repositories of '${REP}':"
+     curl -X GET "https://$controllerIP:$port/api/v2.0/projects/${PRO}/repositories?q=name=${REP}" -H "accept: application/json" \
+      -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq ".[] | {id, name}"
+     exit 0
+  fi
+  curl -X GET "https://$controllerIP:$port/api/v2.0/projects/${PRO}/repositories/${REP}" -H "accept: application/json" \
+   -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq
+  curl -X GET "https://$controllerIP:$port/api/v2.0/projects/${PRO}/repositories/${REP}/artifacts" -H "accept: application/json" \
+   -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | jq
+  echo ""
+  echo "All tags of repository ${PRO}/${REP}:"
+  curl -X GET "https://$controllerIP:$port/api/v2.0/projects/${PRO}/repositories/${REP}/artifacts" -H "accept: application/json" \
+   -k --cacert /etc/docker/certs.d/$controllerIP:$port/harbor.crt -u "admin:$pass" | \
+   jq '.[].tags|sort_by(.name|sub("v";"")|sub("V";"")|sub("_";".")|sub("-";".")|split(".")|map(tonumber))|reverse|{id: .[].id, name: .[].name}'
+fi

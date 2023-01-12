@@ -1,0 +1,254 @@
+#!/bin/sh
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+cp /mnt/configs/xrancfg_sub6.xml   /tmp/
+cp /mnt/configs/phycfg_xran.xml  /tmp/
+#L1PATH=/home/flexRAN_preBuild/flexran_e2e/flexran_l1/flexran_l1_sw/bin/nr5g/gnb/l1
+SUB6_CONF=/tmp/xrancfg_sub6.xml
+PHY_CONF=/tmp/phycfg_xran.xml
+cp /opt/bins/bc /bin/
+# DU CPUS
+#DUPATH=/home/flexRAN_preBuild/flexran_e2e/rsys_du/config/sys_config.txt
+# insert to /root/L1_BIN/bin/nr5g/gnb/l1/cnf_l1_run.sh command below:
+# cp -Lrf $MNT_CONFIG_DIR/* $CONFIG_DIR below inserted
+# cp -Lrf /tmp/*.xml $CONFIG_DIR
+
+get_cpu_list(){
+cpus=$(cat /sys/fs/cgroup/cpuset/cpuset.cpus)
+cpuset=$(cat /proc/self/cpuset)
+cpus=$(cat /sys/fs/cgroup/cpuset/$cpuset/cpuset.cpus)
+#cpus=$(cat /sys/fs/cgroup/cpuset/kubepods/cgroup/cpuset/$cpuset/cpuset.cpus)
+cpu_l=""
+for i in $(echo $cpus | tr , " "); do
+  # if [[ $i =~ "-" ]]; then
+  if [ -z "${i##*-*}" ]; then
+    bg=${i%%-*}
+    en=${i##*-}
+    for j in $(seq $bg $en);do
+      if [ -z "$cpu_l" ]; then
+        cpu_l=$j
+      else
+        cpu_l="$cpu_l $j"
+      fi
+    done
+  else
+    if [ -z "$cpu_l" ]; then
+        cpu_l=$i
+      else
+        cpu_l="$cpu_l $i"
+    fi
+  fi
+done
+echo $cpu_l
+}
+
+function to_cpu_list(){
+cpus=$1
+cpu_l=""
+for i in `echo $cpus | tr , " "`; do
+  if [[ $i =~ "-" ]]; then
+    bg=${i%%-*}
+    en=${i##*-}
+    for j in $(seq $bg $en);do
+      if [ -z "$cpu_l" ]; then
+        cpu_l=$j
+      else
+        cpu_l="$cpu_l $j"
+      fi
+    done
+  else
+    if [ -z "$cpu_l" ]; then
+        cpu_l=$i
+      else
+        cpu_l="$cpu_l $i"
+    fi
+  fi
+done
+echo $cpu_l
+}
+
+
+# $1 element tag, $2 element value, $3 the n time occurrent, $4 file name
+function sub_xml_val ()
+{
+  sed -i -e ':a;N;$!ba; s/[^>]*\(<\/'"$1"'>\)/'"$2"'\1/'"$3"'' $4
+}
+
+# start length string, sh not support array, so we add this function.
+index_strings(){
+argv=$#
+start=$1
+len=$2
+if [ $# -le 2 ]; then
+  echo ""
+  return 1
+fi
+if [[ ! -z "${start//[0-9]}" ]]; then
+  echo ""
+  return 1
+fi
+if [[ ! -z "${len//[0-9]}" ]]; then
+  echo ""
+  return 1
+fi
+
+idx=$((start + 2))
+echo ${@:$idx:$len}
+}
+
+function list2bits(){
+  order=`tr " " "\n" <<< "$1" | sort -n -r | tr "\n" " "`
+  max=`cut -d" " -f1 <<< "$order"`
+  len=$((max + 1))
+  res=`printf '0%.0s' $(seq 1 $len)`
+  # echo "bin: $res"
+  for i in $order; do
+    idx=$((len - i))
+    # echo "iri $dx"
+    res=${res:0:idx-1}1${res:idx}
+    # echo "bin: $res"
+  done
+  res=`echo "obase=16;ibase=2;$res" | bc`
+  res=${res,,}
+  echo 0x$res
+}
+
+function h64bits(){
+  d=${1#0x}
+  len=`wc -c <<< $d`
+  len=$((len-1))
+  if [ $len -gt 16 ]; then
+    l=$((len-16))
+    echo 0x${d:0:l}
+  else
+     echo 0x0
+  fi
+}
+
+function l64bits(){
+  d=${1#0x}
+  len=`wc -c <<< $d`
+  len=$((len-1))
+  if [ $len -gt 16 ]; then
+    l=$((len-16))
+    r0=${d:l:len}
+    # r=${r0##+(0)}
+    r=`sed -e "s/^0*//" <<< $r0`
+    echo 0x$r
+  else
+    echo $1
+  fi
+}
+
+allocate_cups(){
+argv=$#
+if [ $# -le 2 ]; then
+  echo "input $# arguments, it should not less than 2 arguments"
+  return 1
+fi
+
+CONF=$1
+NUM=$2
+
+if [ ! -e "$CONF" ]; then
+  echo "The first argument is configure file, it does not exist!"
+  return 1
+fi
+
+if [[ ! -z "${NUM//[0-9]}" ]]; then
+  echo "The second argument is required CPU numbers, it should be a number!"
+  return 1
+fi
+
+avaliable=$((argv - 2))
+
+if [ "$avaliable" -lt "$NUM" ]; then
+  echo "The process requires no less than $NUM, But k8s only allocate $avaliable to it!"
+  return 1
+fi
+
+echo "Please implement your CPU pin configure here, and call 5G CNF entry-point!"
+}
+
+CPUS=$(get_cpu_list)
+echo "Avaliable CPUS: $CPUS"
+CONF=$SUB6_CONF
+NUM=7  # required CPU numbers
+allocate_cups $CONF $NUM $CPUS
+
+
+# L1
+XRAN_THREAD=$(index_strings 4 1 $CPUS)
+XRAN_WORKER=$(index_strings 3 1 $CPUS)
+SYSTEMTHREAD=$(index_strings 2 1 $CPUS)
+TIMERTHREAD=$(index_strings 2 1 $CPUS)  # can be shared with SYSTEMTHREAD?
+FRONTHAUL_THREAD=$(index_strings 8 1 $CPUS)
+FRONTHAUL_THREAD_2=$(index_strings 8 1 $CPUS)
+RADIO_DPDK_MASTER=$(index_strings 2 1 $CPUS)
+BBUPOOL_WORKER=$(index_strings 5 3 $CPUS)
+
+# ----------------  L1 CPU  -----------------------
+# First time
+# XML=$L1PATH/xrancfg_sub6.xml
+XML=$SUB6_CONF
+
+# XRAN_THREAD=1
+XEL=xRANThread VAL="$XRAN_THREAD, 96, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# XRAN_WORKER=2,3,8-9
+cpus=`to_cpu_list "$XRAN_WORKER"`
+bits=$(list2bits "$cpus")
+XEL=xRANWorker VAL="$bits, 96, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# =============================================
+# XML=$L1PATH/phycfg_xran.xml
+XML=$PHY_CONF
+
+# SYSTEMTHREAD=5
+XEL=systemThread VAL="$SYSTEMTHREAD, 0, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# TIMERTHREAD=6
+XEL=timerThread VAL="$TIMERTHREAD, 96, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# FRONTHAUL_THREAD=7
+XEL=FpgaDriverCpuInfo VAL="$FRONTHAUL_THREAD, 96, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+XEL=FrontHaulCpuInfo VAL="$FRONTHAUL_THREAD_2, 96, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# RADIO_DPDK_MASTER=8
+XEL=radioDpdkMaster VAL="$RADIO_DPDK_MASTER, 99, 0" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+# BBUPOOL_WORKER=1-4
+cpus=`to_cpu_list "$BBUPOOL_WORKER"`
+bits=$(list2bits "$cpus")
+lbits=$(l64bits $bits)
+hbits=$(h64bits $bits)
+XEL=BbuPoolThreadDefault_0_63 VAL="$lbits" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+XEL=BbuPoolThreadDefault_64_127 VAL="$hbits" CUR=1
+sub_xml_val $XEL "$VAL" $CUR $XML
+
+docker_entry_call=/root/L1_BIN/bin/nr5g/gnb/l1/cnf_l1_run.sh
+sed -i -e "/^cp -Lrf/a\cp -Lrf /tmp/\*\.xml \$CONFIG_DIR" $docker_entry_call
+echo "Hello from the script residing in helm chart."
+echo "New line added here."
+echo "Sleeping for infinity!"
+# sleep infinity
+#sleep 360000
+/bin/bash /root/L1_BIN/docker_entrypoint.sh

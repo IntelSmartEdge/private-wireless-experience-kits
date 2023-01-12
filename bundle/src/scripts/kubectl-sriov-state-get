@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+# This script is used to artifacts infomation in pwek sriov sriovnetworknodestate.
+# copy this file to /usr/local/bin/ before use.
+# usage:
+#   kubectl sriov sriovnetworknodestate get ~[resource]
+# or
+#   kubectl sriov sriovnetworknodestate get [resource]
+# Note:
+#   for autocompletion, please ref: https://github.com/kubernetes/kubernetes/issues/74178
+#   for template, please ref: https://kubernetes.io/docs/reference/kubectl/cheatsheet/
+#   for jq keys and values, please ref: https://stackoverflow.com/questions/34226370/jq-print-key-and-value-for-each-entry-in-an-object
+#   for pattern argument: There is a prefix "~" and sufix with substring. It does not support regular expression.
+
+
+NS=sriov-network-operator
+
+query=false
+pci=$(grep -o "0\{0,4\}:[0-9a-z]\{2\}:[0-9a-z]\{2\}.[0-9a-z]" <<< "$1")
+retVal=$?
+if [ $retVal -eq 0 ]; then
+  query=true
+fi
+
+if [[ "$1" == "~"* ]]; then
+  kubectl -n sriov-network-operator get sriovnetworknodestate | grep "${1#~*}"
+fi
+
+if [[ "$1" == "~"* ]]; then
+  query=true
+fi
+
+res=${1#\~}
+
+if [[ $res =~ "/" ]]; then
+  # typ=${res%%/*}
+  resource=${res##*/}
+else
+  resource=${res}
+fi
+
+echo "$resource", "$pci"
+
+if [[ "$query" == true ]]; then
+  if [ -n "$pci" ]; then
+    echo "Find VF by $pci"
+    nodes=$(kubectl get SriovNetworkNodeState -n ${NS:-default} -o jsonpath="{.items[].metadata.name}")
+    for i in $nodes; do
+      echo "node: $i"
+      pfs=$(kubectl get SriovNetworkNodeState -n ${NS:-default} "$i" -o jsonpath="{.status.interfaces}")
+      pfsn=$(jq ".[].name" <<< "$pfs")
+      for j in ${pfsn}; do
+        pfn=${j%\"}
+        pfn=${pfn#\"}
+        vfinfo=$(jq ".[] | select(.name==$j) | .Vfs[] | select(.pciAddress==\"$pci\") " <<< "$pfs" 2>/dev/null)
+        pfinfo=$(jq ".[] | select(.name==$j and .pciAddress==\"$pci\")" <<< "$pfs")
+        if [ -n "$pfinfo" ]; then
+          echo "pf: $j, pciAddress: $pci"
+          echo "---- status: ----"
+          jq <<< "$pfinfo"
+          echo "---- spec: ----"
+          kubectl get SriovNetworkNodeState -n ${NS:-default} "$i" -o jsonpath="{.spec.interfaces}" | \
+            jq ".[] | select(.name==$j)"
+          continue
+        fi
+        if [ -n "$vfinfo" ]; then
+          echo "pf: $j, vf: $vf, pciAddress: $pci"
+          echo "---- status: ----"
+          jq <<< "$vfinfo"
+          echo "---- spec: ----"
+          kubectl get SriovNetworkNodeState -n ${NS:-default} "$i" -o jsonpath="{.spec.interfaces}" | \
+            jq ".[] | select(.name==$j)"
+          continue
+        fi
+      done
+    done
+  else
+    nodes=$(kubectl get SriovNetworkNodeState -n ${NS:-default} -o jsonpath="{.items[].metadata.name}")
+    for i in $nodes; do
+      echo "node: $i"
+      pfs=$(kubectl get SriovNetworkNodeState -n ${NS:-default} "$i" -o jsonpath="{.spec.interfaces}")
+      pfsn=$(jq ".[].name" <<< "$pfs")
+      for j in ${pfsn}; do
+        pfn=${j%\"}
+        pfn=${pfn#\"}
+        pfinfo=$(jq ".[] | select(.name==$j) | .vfGroups[] | select((.policyName | \
+                 contains(\"$resource\")) or (.resourceName | contains(\"$resource\")))" <<< "$pfs")
+        if [ -n "$pfinfo" ]; then
+          echo "pf: $j"
+          echo "---- spec: ----"
+          jq <<< "$pfinfo"
+        fi
+      done
+    done
+  fi
+  exit 0
+fi
+
+if [ -z "$1" ]; then
+  echo "---- spec info: ----"
+  kubectl get SriovNetworkNodeState -n ${NS:-default} -o json | \
+    jq '{"node": .items[].metadata.name, "spec": .items[].spec}'
+  echo "---- status info: ----"
+  kubectl get SriovNetworkNodeState -n ${NS:-default} -o json | \
+    jq '{"node": .items[].metadata.name, "status": .items[].status}'
+  # list all node names
+  echo "---- node summary: ----"
+  kubectl get SriovNetworkNodeState -n ${NS:-default} -o json | \
+    jq '.items  | to_entries| {"index": .[].key, "node": .[].value.metadata.name}'
+  echo "---- status summary: ----"
+  kubectl get SriovNetworkNodeState -n ${NS:-default} -o json | \
+    jq '{"node": .items[].metadata.name, "interface": .items[].status.interfaces[].name}'
+  echo "---- spec summary: ----"
+  kubectl get SriovNetworkNodeState -n ${NS:-default} -o json | \
+    jq '{"node": .items[].metadata.name, "interface": .items[].spec.interfaces[].name}'
+
+  echo "---- vf resources summary: ----"
+  nodes=$(kubectl get SriovNetworkNodeState -n ${NS:-default} -o jsonpath="{.items[].metadata.name}")
+  for i in $nodes; do
+    interfaces=$(kubectl get SriovNetworkNodeState -n ${NS:-default} "$i" -o jsonpath="{.status.interfaces}")
+    for j in $(jq ".[].name" <<< "$interfaces"); do
+      ifc=${j%\"}
+      ifc=${ifc#\"}
+      pf=$(jq '.[] | select(.name=="'"$ifc"'")' <<< "$interfaces")
+      vfs=$(jq '.Vfs' <<< "$pf")
+      if [ "$vfs" == "null" ]; then
+         echo "\"${i}/${ifc}\""
+      else
+        l=0
+        for k in $(jq ".[].vfID" <<< "$vfs"); do
+          l=$((l+1))
+          vfn=$(jq ".[$l].name" <<< "$vfs")
+          if [ "$vfn" == "null" ]; then
+            echo "\"${i}/${ifc}/$k\""
+          else
+            vfn=${vfn%\"}
+            vfn=${vfn#\"}
+            echo "\"${i}/${ifc}/$vfn\""
+          fi
+        done
+      fi
+    done
+  done
+  exit 0
+else
+  node=${1%%/*}
+  if [[ "$1" == *"/"*"/"* ]]; then
+    pf=${1#*/}
+    vf=${pf#*/}
+    pf=${pf%%/*}
+    ifc=$(kubectl get SriovNetworkNodeState -n "${NS:-default}" "$node" \
+      -o jsonpath="{.status.interfaces}" | jq '.[] | select(.name=="'"$pf"'")')
+    if [[ "$vf" =~ ^[0-9]+$ ]]; then
+      jq '.Vfs[] | select(.vfID=='"$vf"')' <<< "$ifc"
+    else
+      jq '.Vfs[] | select(.name=="'"$vf"'")' <<< "$ifc"
+    fi
+    exit 0
+  fi
+  if [[ "$1" == *"/"* ]]; then
+    pf=${1#*/}
+    kubectl get SriovNetworkNodeState -n ${NS:-default} "$node" \
+              -o jsonpath="{.status.interfaces}" | jq '.[] | select(.name=="'"$pf"'")'
+    exit 0
+  fi
+  echo "---- Node info: ----"
+  nodes=$(kubectl get SriovNetworkNodeState -n ${NS:-default} -o json | \
+    jq '.items  | to_entries| {"index": .[].key, "node": .[].value.metadata.name}')
+  grep "$1" <<< "$nodes"
+  retVal=$?
+  if [ "$retVal" -eq 0 ]; then
+    echo "---- spec info: ----"
+    kubectl get SriovNetworkNodeState -n "${NS:-default}" "$node" -o json | \
+      jq '{"node": .metadata.name, "spec": .spec}'
+    echo "---- status info: ----"
+    kubectl get SriovNetworkNodeState -n "${NS:-default}" "$node" -o json| \
+      jq '{"node": .metadata.name, "status": .status}'
+    exit 0
+  fi
+  # VF input
+  grep -E '_[0-9]{1,}$'  <<< "$1"
+  retVal=$?
+  if [ "$retVal" -eq 0 ]; then
+    vf="${1}"
+    nodes=$(kubectl get SriovNetworkNodeState -n ${NS:-default} -o jsonpath="{.items[].metadata.name}")
+    for i in $nodes; do
+      echo "node: $i"
+      pfs=$(kubectl get SriovNetworkNodeState -n ${NS:-default} "$i" -o jsonpath="{.status.interfaces}")
+      pfsn=$(jq ".[].name" <<< "$pfs")
+      for j in ${pfsn}; do
+        pfn=${j%\"}
+        pfn=${pfn#\"}
+        vfinfo=$(jq ".[] | select(.name==$j) | .Vfs[] | select(.name==\"$vf\") " <<< "$pfs" 2>/dev/null)
+        if [ -n "$vfinfo" ]; then
+          echo "pf: $j, vf: $vf"
+          echo "---- status: ----"
+          jq <<< "$vfinfo"
+          echo "---- spec: ----"
+          kubectl get SriovNetworkNodeState -n ${NS:-default} "$i" -o jsonpath="{.spec.interfaces}" | \
+            jq ".[] | select(.name==$j)"
+        fi
+      done
+    done
+    exit 0
+  fi
+  nodes=$(kubectl get SriovNetworkNodeState -n ${NS:-default} -o jsonpath="{.items[].metadata.name}")
+  for i in $nodes; do
+    echo "node: $i"
+    echo "---- status: ----"
+    kubectl get SriovNetworkNodeState -n ${NS:-default} "$i" -o jsonpath="{.status.interfaces}" | \
+      jq ".[] | select(.name==\"${1}\")"
+    echo "---- spec: ----"
+    kubectl get SriovNetworkNodeState -n ${NS:-default} "$i" -o jsonpath="{.spec.interfaces}" | \
+      jq ".[] | select(.name==\"${1}\")"
+  done
+fi

@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+# This script is used to artifacts infomation in pwek sriovnetworknodepolicy.
+# copy this file to /usr/local/bin/ before use.
+# usage:
+#   kubectl net attach get ~[resource]
+# or
+#   kubectl net attach get [resource]
+# Note:
+#   for autocompletion, please ref: https://github.com/kubernetes/kubernetes/issues/74178
+#   for template, please ref: https://kubernetes.io/docs/reference/kubectl/cheatsheet/
+#   for jq keys and values, please ref: https://stackoverflow.com/questions/34226370/jq-print-key-and-value-for-each-entry-in-an-object
+#   for pattern argument: There is a prefix "~" and sufix with substring. It does not support regular expression.
+
+
+temp='{{range .items}}{{`{"name":  "`}}{{.metadata.name}}{{`",` }}
+  {{`"namespace": "`}}{{.metadata.namespace}}{{`", `}}
+  {{`"resourceName": "`}}{{index .metadata.annotations "k8s.v1.cni.cncf.io/resourceName"}}{{`", `}}
+  {{`"spec": `}}{{range $k,$v := .spec}}{{`{"`}}{{$k}}{{`"`}}: {{$v}}{{`}`}}{{end}}{{`}`}}{{end}}'
+temp=$(tr -d '\n' <<< "$temp" | sed -e 's/}[ \t]*{/}{/g')
+nets=$(kubectl get net-attach-def -A -o  go-template="$temp" | sed -e 's/}{/}, {/g' -e 's/\(.*\)/[\1]/')
+
+if [[ "$1" == "~"* ]]; then
+  res="${1#\~}"
+  nns=$(jq ".[] | select(.resourceName  | contains(\"$res\")) | [.name, .namespace]| @tsv" <<< "$nets")
+  for nn in $nns; do
+    n=$(tr -d '"' <<< "$nn")
+    nm=${n%\\t*}
+    ns=${n#*\\t}
+    echo "---- find resource: $nm in namespace: $ns  ----"
+    temp='{{range $k,$v := .spec}}{{`{"`}}{{$k}}{{`"`}}: {{$v}}{{`}`}}{{end}}'
+    ipam=$(kubectl -n "$ns" get net-attach-def "$nm" -o go-template="$temp")
+    kubectl -n "$ns" get net-attach-def "$nm" -o json | jq --argjson ipam "${ipam}" '. | .spec.config = $ipam'
+  done
+  exit 0
+fi
+
+if [ -z "$1" ]; then
+  jq <<< "$nets"
+  echo "---- summary: ----"
+  jq ".[] | {name: .name, namespace: .namespace, resourceName: .resourceName}" <<< "$nets"
+  exit 0
+else
+  res="$1"
+  nns=$(jq ".[] | select(.name==\"$res\") | [.name, .namespace]| @tsv" <<< "$nets")
+  for nn in $nns; do
+    n=$(tr -d '"' <<< "$nn")
+    nm=${n%\\t*}
+    ns=${n#*\\t}
+    echo "---- find resource: $nm in namespace: $ns  ----"
+    temp='{{range $k,$v := .spec}}{{`{"`}}{{$k}}{{`"`}}: {{$v}}{{`}`}}{{end}}'
+    ipam=$(kubectl -n "$ns" get net-attach-def "$nm" -o go-template="$temp")
+    kubectl -n "$ns" get net-attach-def "$nm" -o json | jq --argjson ipam "${ipam}" '. | .spec.config = $ipam'
+  done
+fi

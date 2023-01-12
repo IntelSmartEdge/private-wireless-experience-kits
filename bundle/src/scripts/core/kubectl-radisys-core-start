@@ -1,0 +1,79 @@
+#!/bin/bash
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+BASEDIR=$(dirname "$0")
+echo "$BASEDIR"
+
+NS=${NS:-$PWEKNS}
+CHART=vcn
+TIMEOUT=300
+
+coref=$(kubectl -n "$PWEKNS" get cores.pwek.smart.edge.org common -o json | jq .spec)
+VENDOR=$(jq -r .vendor <<< $coref)
+
+port=$(kubectl get svc harbor -n harbor -o json | jq -c '.spec.ports[] | select(.name | contains("https"))' | jq .nodePort)
+controllerIP=$(kubectl get node -l "node-role.kubernetes.io/control-plane=" -o json | jq -c '.items[0].status.addresses[] | select(.type | contains("InternalIP"))' |jq -r .address)
+
+# "$CORE_SCRIPTS"/start_core
+"$CORE_SCRIPTS"/imsi.sh
+# Run the RAN excutable files
+for i in $(ls "$CORE_SCRIPTS"/[0-9]*-runtime* 2>/dev/null | sort -V); do
+  echo "Run $i"
+  $i
+done
+
+echo "helm install -n $PWEKNS vcn $VENDOR_HELM/cn/"
+# helm template --debug vcn ./helm/cn \
+helm install -n "$PWEKNS" vcn $VENDOR_HELM/cn/ \
+  --set amf.image.repository=$controllerIP:$port/intel/amf \
+  --set amf.oamInfo.image.repository=$controllerIP:$port/intel/oamamf \
+  --set smf.image.repository=$controllerIP:$port/intel/smf \
+  --set smf.oamInfo.image.repository=$controllerIP:$port/intel/oamsmf \
+  --set ausf.image.repository=$controllerIP:$port/intel/ausf \
+  --set ausf.oamInfo.image.repository=$controllerIP:$port/intel/oamausf \
+  --set udm.image.repository=$controllerIP:$port/intel/udm \
+  --set udm.oamInfo.image.repository=$controllerIP:$port/intel/oamudm \
+  --set mongodb.image.repository=$controllerIP:$port/intel/mongodb \
+  --set appserver.image.repository=$controllerIP:$port/intel/appserver \
+  --set gui.image.repository=$controllerIP:$port/intel/gui \
+  --set upf.upf.upfcp_image=$controllerIP:$port/intel/upfcp:3.0.1 \
+  --set upf.upf.upfdp_image=$controllerIP:$port/intel/upfdp:3.0.1 \
+  --set upfoam.upfoam.image=$controllerIP:$port/intel/upfoam:3.0.1
+
+function check_helm_status {
+  expire=$(( $(date +%s) + TIMEOUT ))
+  i=0
+  echo ""
+  while true
+  do
+    ((i++))
+    ans=$((((((i % 2)) + 1))*2))
+    status=$(helm status -n $1 $2 -o json 2>/dev/null | jq -r .info.status)
+    if [ "$status" = "deployed" ]; then
+      echo "$2 in $1 namespace is deployed"
+      return 0
+    else
+      echo "$(tput cuu1; tput el; tput setaf $ans;)$i times to check $2 status: ${status:-not ready.}$(tput sgr0)"
+    fi
+
+    sleep 1
+    if [ "$(date +%s)" -ge $expire ]; then
+      echo "Timeout $TIMEOUT, status of $2 is not ready: $status."
+      return 1
+    fi
+  done
+}
+
+check_helm_status "$NS" "$CHART"
+helm status -n "$NS" "$CHART"

@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+# example:
+if [ -z "$1" ] ;then
+cat <<< '
+kubectl sriov policy render "$(jq <<EOF
+{
+  "name": "Hello",
+  "resourceName": "RRU",
+  "numVfs":  3,
+  "vendor": "8086"
+}
+EOF
+)"'
+
+echo ""
+echo "---- Optional parameters: ----"
+echo '"hostname": '
+echo '"priority": '
+echo '"mtu": '
+echo '"deviceID":'
+echo '"pfNames": ["eth0", "eth1"]'
+echo '"rootDevices": ["0000:d7:00.0"]'
+echo '"deviceType":' '#"vfio-pci" or "netdevice"'
+echo '"isRdma":'
+echo '"linkType":'
+echo ""
+
+echo "---- Get exmaple by: ----"
+echo "kubectl get sriovnetworknodepolicy -A"
+exit 0
+fi
+
+NS="sriov-network-operator"
+
+# jinja2_render "$(jq <<EOF
+# {
+#   "name": "Hello"
+# }
+# EOF
+# )" | yq
+jinja2_render(){
+item=${1:-{\}}
+cat <<EOF | python3
+
+from jinja2 import Template
+# name = input("Enter your name: ")
+name="hello"
+
+item=$item
+item["namespace"]="$NS"
+
+t="""
+---
+
+apiVersion: sriovnetwork.openshift.io/v1
+kind: SriovNetworkNodePolicy
+metadata:
+  name: {{ item.name }}
+  namespace: {{ item.namespace }}
+spec:
+  nodeSelector:
+    sriov-network-operator-node: "yes"
+{% if item.hostname is defined %}
+    kubernetes.io/hostname: {{ item.hostname }}
+{% endif %}
+{% if item.priority is defined %}
+  priority: {{ item.priority }}
+{% endif %}
+{% if item.mtu is defined %}
+  mtu: {{ item.mtu }}
+{% endif %}
+  resourceName: {{ item.resourceName }}
+  numVfs: {{ item.numVfs }}
+  nicSelector:
+    vendor: "{{ item.vendor }}"
+{% if item.deviceID is defined %}
+    deviceID: {{ item.deviceID }}
+{% endif %}
+{% if item.pfNames is defined %}
+    pfNames:
+{% for element in item.pfNames %}
+      - "{{ element }}"
+{% endfor %}
+{% endif %}
+{% if item.rootDevices is defined %}
+    rootDevices:
+{% for element in item.rootDevices %}
+      - "{{ element }}"
+{% endfor %}
+{% endif %}
+{% if item.deviceType is defined %}
+  deviceType: {{ item.deviceType }}
+{% endif %}
+{% if item.isRdma is defined %}
+  isRdma: {{ item.isRdma }}
+{% endif %}
+{% if item.linkType is defined %}
+  linkType: {{ item.linkType }}
+{% endif %}
+"""
+tm = Template(t)
+msg = tm.render(item=item)
+print(msg)
+EOF
+}
+
+jinja2_render "$1" | yq

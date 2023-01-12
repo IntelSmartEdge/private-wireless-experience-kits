@@ -1,0 +1,98 @@
+#!/bin/bash
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+# This script is used to push a vendor cnf image to pwek harbor.
+# copy this file to /usr/local/bin/ before use.
+# usage:
+#   kubectl push cnf radisys vendor-cnf-image.tar
+# or
+#   kubectl push cnf radisys vendor-cnf-image.tar smf:v2.5.2
+# Note:
+#   for autocompletion, please ref: https://github.com/kubernetes/kubernetes/issues/74178
+
+image_file=$1
+
+name=$2
+if [[ "$name" == *:* ]]; then
+  tag=${name##*:}
+fi
+name=${name%:*}
+
+cmd=docker
+docker --version 2>/dev/null
+if [[ $? == 127 ]]; then
+  cmd=nerdctl
+  echo "Not find docker command!"
+fi
+
+nerdctl --version
+if [[ $? == 127 ]]; then
+  echo "Not find nerdctl command!"
+fi
+
+echo "push radisys cnf image to habor."
+pass=$(kubectl get secret --namespace harbor harbor-admin -o jsonpath="{.data.admin-password}" | base64 -d)
+port=$(kubectl get svc harbor -n harbor -o json | jq -c '.spec.ports[] | select(.name | contains("https"))' | jq .nodePort)
+controllerIP=$(kubectl get node -l "node-role.kubernetes.io/control-plane=" -o json | jq -c '.items[0].status.addresses[] | select(.type | contains("InternalIP"))' |jq -r .address)
+echo "Harbor endpoint is: $controllerIP:$port"
+
+
+iminfo=$($cmd load < $image_file)
+echo "$iminfo"
+imageinfo=$(awk '{match($0, /unpacking\s([^ ]+)\s\(/, a);print a[1];exit}' <<< $iminfo)
+echo "$imageinfo"
+if [ -z "$imageinfo" ]; then
+  echo "?? $imageinfo"
+  imageinfo=$(awk '{match($0, /Loaded image:\s([^ ]+)/, a);print a[1];exit}' <<< $iminfo)
+fi
+im_pattern=${imageinfo//:/*}
+im_pattern=${im_pattern##*/}
+if [ -z "$imageinfo" ]; then
+  echo "?? $imageinfo"
+  imagehash=$(awk '{match($0, /Loaded image ID:\s([^ ]+)/, a);print a[1];exit}' <<< $iminfo)
+  imagehash=${imagehash#*:}
+  im_pattern=${imagehash:0:12}
+fi
+echo "The image info is \"$imageinfo\", hash is: $imagehash"
+
+if [ -z "$name" ]; then
+  # https://stackoverflow.com/questions/58065875/how-to-sort-my-docker-images-by-size-with-docker-images-command
+  info=$($cmd images -a "--format={{.Repository}} {{.Tag}} {{.ID}} '{{.CreatedAt}}'" | grep "$im_pattern" | sort -k4 -r | head -n 1 )
+  image_tag=$(awk '{print $2}' <<< $info)
+  image_name=$(awk '{print $1}' <<< $info)
+  image_name=${image_name##*/}
+else
+  image_name=$name
+  image_tag=$($cmd images --filter=reference="*/*/$image_name" --filter=reference="*/$image_name" \
+    --filter=reference="$image_name" --format "{{.Tag}}")
+fi
+
+image_tag=${tag:-$image_tag}
+it=${imageinfo##*:}
+image_name=${name:-$image_name}
+nm=${imageinfo%:*}
+nm=${nm##*/}
+image_tag=${image_tag:-$it}
+image_name=${image_name:-$nm}
+
+echo "tag the cnf image from $image_name:$image_tag to $controllerIP:$port/intel/$image_name:$image_tag"
+$cmd tag $image_name:$image_tag $controllerIP:$port/intel/$image_name:$image_tag
+
+$cmd login -u admin $controllerIP:$port --password-stdin  <<< $pass
+$cmd push $controllerIP:$port/intel/$image_name:$image_tag
+image_id=$($cmd images --filter=reference="*/*/$image_name" --filter=reference="*/$image_name" \
+ --filter=reference="$image_name" --format "{{.ID}}")
+$cmd rmi $image_id -f
+$cmd images --filter=reference="*/*/$image_name" --filter=reference="*/$image_name" \
+ --filter=reference="$image_name"

@@ -51,11 +51,11 @@ profiles:
   - name: Smart_Edge_Open_Private_Wireless_Experience_Kit
     bare_os: false  # enable only if donnot need install Experience_Kit
     url: https://github.com/smart-edge-open/profiles-centos.git
-    branch: smart-edge-open-22.04
+    branch: smart-edge-open-23.01
     scenario: multi-node       # possible scenarios: multi-node only
     experience_kit:
       url: https://github.com/smart-edge-open/private-wireless-experience-kits.git
-      branch: smart-edge-open-22.04
+      branch: smart-edge-open-23.01
       deployment: pwek-all-in-one
     controlplane_mac: ''
     #We do not support "root" account here

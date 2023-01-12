@@ -23,8 +23,8 @@ function check_helm_status {
   expire=$(( $(date +%s) + $TIMEOUT ))
   while true
   do
-    status=$(helm status -n $1 $2 -o json | jq -r .info.status)
-    if [ -z $status ]; then
+    status=$(helm status -n $1 $2 -o json 2>/dev/null | jq -r .info.status)
+    if [ -z "$status" ]; then
       echo "Can not get status of $2 in $1 namespace, exit."
       return 0
     else
@@ -43,10 +43,12 @@ CHART=vdu
 echo "helm uninstall $CHART -n $NS"
 helm uninstall $CHART -n $NS
 check_helm_status $NS $CHART
-helm status -n $NS $CHART
+{ ERROR=$(helm status -n $NS $CHART 2>&1 1>&$out); } {out}>&1
+sed "s/Error: release: \(not found\)/Info: release $CHART: \1/" <<< $ERROR
 
 CHART=vcu
 echo "helm uninstall -n $NS $CHART"
 helm uninstall -n $NS $CHART
 check_helm_status $NS $CHART
-helm status -n $NS $CHART
+{ ERROR=$(helm status -n $NS $CHART 2>&1 1>&$out); } {out}>&1
+sed "s/Error: release: \(not found\)/Info: release $CHART: \1/" <<< $ERROR

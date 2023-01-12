@@ -1,0 +1,25 @@
+{
+    "folders": [
+        {
+            "path": "."
+        },
+        {
+            "path": "opendek"
+        },
+        {
+            "path": "opendek/roles/baseline_ansible"
+        },
+        {
+            "path": "../profiles-centos"
+        },
+        {
+            "path": "../edge-agents"
+        },
+        {
+            "path": "../edge-services"
+        },
+        {
+            "path": "../pwek.doc"
+        }
+    ]
+}

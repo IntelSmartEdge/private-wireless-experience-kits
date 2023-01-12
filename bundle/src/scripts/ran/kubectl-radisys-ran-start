@@ -1,0 +1,143 @@
+#!/bin/bash
+# INTEL CONFIDENTIAL
+#
+# Copyright 2020-2022 Intel Corporation.
+#
+# This software and the related documents are Intel copyrighted materials, and your use of
+# them is governed by the express license under which they were provided to you ("License").
+# Unless the License provides otherwise, you may not use, modify, copy, publish, distribute,
+# disclose or transmit this software or the related documents without Intel's prior written permission.
+#
+# This software and the related documents are provided as is, with no express or implied warranties,
+# other than those that are expressly stated in the License.
+
+
+BASEDIR=$(dirname "$0")
+echo "$BASEDIR"
+
+NS=${NS:-$PWEKNS}
+CHART=vcu
+TIMEOUT=300
+
+ranf=$(kubectl -n $NS get rans.pwek.smart.edge.org common -o json | jq .spec)
+VENDOR=$(jq -r .vendor <<< $ranf)
+DUS=$(jq -r .vendor <<< $ndu)
+port=$(kubectl get svc harbor -n harbor -o json | jq -c '.spec.ports[] | select(.name | contains("https"))' | jq .nodePort)
+controllerIP=$(kubectl get node -l "node-role.kubernetes.io/control-plane=" -o json | jq -c '.items[0].status.addresses[] | select(.type | contains("InternalIP"))' |jq -r .address)
+
+
+#NETNS=sriov-network-operator
+#resource=intel_sriov_10G_RRU_VF
+#fronthaul=$(kubectl get SriovNetworkNodeState -n ${NETNS:-default} -o json |  \
+#  jq ".items[$node].spec.interfaces[] | select( .vfGroups[].resourceName | contains(\"$resource\"))|.name" |
+#  uniq | tr -d '"' | head -n 1)
+#iface=$fronthaul
+#driver=$(kubectl get SriovNetworkNodeState -n ${NETNS:-default} -o json | \
+#  jq ".items[$node].status.interfaces[] | select( .name | contains(\"$iface\")) | .driver" |tr -d '"')
+
+#pid=$(kubectl get SriovNetworkNodeState -n ${NETNS:-default} -o json | \
+#  jq ".items[$node].status.interfaces[] | select( .name | contains(\"$iface\")) | .deviceID" |tr -d '"')
+
+#if [[ "$driver" == i40e ]] ; then
+#cplaneResourceName=intel_sriov_10G_RRU_VF1
+#nicType=X710
+#fhVf=0
+#uplaneVlan=2
+#fi
+#if [[ "$driver" == ice ]] ; then
+#cplaneResourceName=intel_sriov_10G_RRU_VF0
+#nicType=E810
+#fhVf=1
+#uplaneVlan=1
+#fi
+
+$RAN_SCRIPTS/mimo.sh
+$RAN_SCRIPTS/frequence.sh
+$RAN_SCRIPTS/mcs.sh
+
+# Run the RAN excutable files
+for i in $(ls $RAN_SCRIPTS/[0-9]*-runtime* 2>/dev/null | sort -V); do
+  echo "Run $i"
+  $i
+done
+
+function check_helm_status {
+  expire=$(( $(date +%s) + TIMEOUT ))
+  i=0
+  echo ""
+  while true
+  do
+    ((i++))
+    ans=$((((((i % 2)) + 1))*2))
+    status=$(helm status -n $1 $2 -o json 2>/dev/null | jq -r .info.status)
+    if [ "$status" = "deployed" ]; then
+      echo "$2 in $1 namespace is deployed"
+      return 0
+    else
+      echo "$(tput cuu1; tput el; tput setaf $ans;)$i times to check $2 status: ${status:-not ready.}$(tput sgr0)"
+    fi
+
+    sleep 1
+    if [ "$(date +%s)" -ge $expire ]; then
+      echo "Timeout $TIMEOUT, status of $2 is not ready: $status."
+      return 1
+    fi
+  done
+}
+
+CHART=vcu
+echo "helm install -n $NS $CHART $VENDOR_HELM/cu/"
+# helm template --debug vcu ./helm/cu \
+helm install -n $NS $CHART $VENDOR_HELM/cu \
+  --set image.repository=$controllerIP:$port/intel/cu \
+  --set appConfig.oamInfo.image.repository=$controllerIP:$port/intel/cu-oam
+check_helm_status $NS $CHART
+helm status -n $NS $CHART
+
+CHART=vdu
+echo "helm install -n $NS $CHART $VENDOR_HELM/du/"
+# helm template --debug vdu ./helm/du \
+helm install -n $NS $CHART $VENDOR_HELM/du \
+  --set l1.image.repository=$controllerIP:$port/intel/flexran-l1 \
+  --set l2.image.repository=$controllerIP:$port/intel/du \
+  --set l2.oamInfo.image.repository=$controllerIP:$port/intel/du-oam
+  # NOTE: FIXME, There is a bug in radisys helm chart.
+  # --set nicType=$nicType \
+  # --set l1.appConfig.fronthaulInterfaces[0].fhVf=$fhVf \
+  # --set l1.appConfig.fronthaulInterfaces[0].cplaneResourceName=$cplaneResourceName \
+  # --set l1.appConfig.uplaneVlan=$uplaneVlan \
+check_helm_status $NS $CHART
+helm status -n $NS $CHART
+
+if (( DUS < 2 )); then
+  echo "Deploy DU 1 completely"
+  exit 0
+fi
+
+for i in $(seq 2 $DUS); do
+CHART=vdu${i}
+label=du${i}
+$RAN_SCRIPTS/mimo.sh $label
+$RAN_SCRIPTS/frequence.sh $label
+$RAN_SCRIPTS/mcs.sh $label
+
+# Run the RAN excutable files
+for j in $(ls $RAN_SCRIPTS/[0-9]*-runtime* 2>/dev/null | sort -V); do
+  echo "Run $j $label"
+  $j $label
+done
+helm install -n $NS $CHART $VENDOR_HELM/du \
+  --set l1.image.repository=$controllerIP:$port/intel/flexran-l1 \
+  --set l2.image.repository=$controllerIP:$port/intel/du \
+  --set l2.oamInfo.image.repository=$controllerIP:$port/intel/du-oam \
+  --set l2.oamInfo.oamLabel: du${i}-oam \
+  --set l2.appConfig.f1uInterface.resourceName intel_sriov_DU${i} \
+  --set l2.appConfig.f1uInterface.f1uDuIpAddress 4.4.4.$(( 9 + 2*i )) \
+  --set l2.appConfig.f1uInterface.f1uCuIpAddress 4.4.4.12
+  # NOTE: FIXME, There is a bug in radisys helm chart.
+  # --set nicType=$nicType \
+  # --set l1.appConfig.fronthaulInterfaces[0].fhVf=$fhVf \
+  # --set l1.appConfig.fronthaulInterfaces[0].cplaneResourceName=$cplaneResourceName \
+  # --set l1.appConfig.uplaneVlan=$uplaneVlan \
+  echo "Deploy DU $DUS completely"
+done
