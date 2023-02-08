@@ -7,7 +7,7 @@ cached-property==1.5.2
 certifi==2022.12.7
 cffi==1.15.0
 charset-normalizer==2.0.10
-cryptography==38.0.4
+cryptography==39.0.1
 distro==1.6.0
 docker==5.0.3
 docker-compose==1.29.2
